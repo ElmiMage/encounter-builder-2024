@@ -1,0 +1,281 @@
+<div class="encounter-builder-2024">
+<div class="scrollable-content">
+
+  <nav class="eb-tabs">
+    <button type="button" class="eb-tab-button" data-action="switchTab" data-tab="encounter">Encounter</button>
+    <button type="button" class="eb-tab-button" data-action="switchTab" data-tab="loot">Loot</button>
+  </nav>
+
+  <section class="party-config">
+    <label>
+      Party Level
+      <select name="partyLevel" tabindex="1">
+        {{#each levelOptions}}
+          <option value="{{this}}" {{#if (eq this ../partyLevel)}}selected{{/if}}>{{this}}</option>
+        {{/each}}
+      </select>
+    </label>
+    <label>
+      Party Size
+      <select name="partySize" tabindex="2">
+        {{#each sizeOptions}}
+          <option value="{{this}}" {{#if (eq this ../partySize)}}selected{{/if}}>{{this}}</option>
+        {{/each}}
+      </select>
+    </label>
+    <label>
+      Difficulty
+      <select name="difficulty" tabindex="3">
+        <option value="low" {{#if (eq difficulty "low")}}selected{{/if}}>Low</option>
+        <option value="moderate" {{#if (eq difficulty "moderate")}}selected{{/if}}>Moderate</option>
+        <option value="high" {{#if (eq difficulty "high")}}selected{{/if}}>High</option>
+      </select>
+    </label>
+  </section>
+
+  <section class="budget-bar">
+    <div class="budget-label">
+      {{spend.spent}} / {{budget}} XP
+      {{#if spend.overBudget}}<span class="over-budget">OVER BUDGET</span>{{/if}}
+    </div>
+    <div class="budget-track">
+      <div class="budget-fill {{#if spend.overBudget}}over{{/if}}" style="width: {{spendPercentClamped}}%"></div>
+    </div>
+  </section>
+
+  {{#if (eq activeTab "encounter")}}
+
+  <details class="compendium-tree" data-tree="encounter" {{#if compendiumTreeOpen}}open{{/if}}>
+    <summary>Compendiums ({{compendiums.length}} packs)</summary>
+    {{#each groupedCompendiums}}
+      <details class="compendium-group" data-group="{{this.groupKey}}" {{#if this.isOpen}}open{{/if}}>
+        <summary>
+          <input type="checkbox" class="{{#if this.mixed}}mixed-state{{/if}}" data-action="toggleCompendiumGroup" data-group="{{this.groupKey}}" {{#if this.allEnabled}}checked{{/if}} />
+          {{#if this.mixed}}<span class="mixed-marker" title="Some packs in this group are selected">●</span>{{/if}}
+          {{this.groupLabel}}
+        </summary>
+        <div class="compendium-group-packs">
+          {{#each this.packs}}
+            <label class="compendium-toggle">
+              <input type="checkbox" data-action="toggleCompendium" data-collection="{{this.collection}}" {{#if this.enabled}}checked{{/if}} />
+              {{this.label}} <span class="pack-count">({{this.total}})</span>
+            </label>
+          {{/each}}
+        </div>
+      </details>
+    {{/each}}
+  </details>
+
+  <section class="auto-fill-controls">
+    <label>
+      Desired Monster Count
+      <input type="number" name="desiredCount" min="1" max="30" value="{{desiredCount}}" />
+    </label>
+    <label>
+      Creature Type
+      <select name="creatureTypeFilter">
+        <option value="any" {{#if (eq creatureTypeFilter "any")}}selected{{/if}}>Any</option>
+        {{#each creatureTypes}}
+          <option value="{{this}}" {{#if (eq ../creatureTypeFilter this)}}selected{{/if}}>{{this}}</option>
+        {{/each}}
+      </select>
+    </label>
+    <button type="button" data-action="autoFill">Auto-Fill Remaining</button>
+    <label class="boss-mode-toggle">
+      <input type="checkbox" name="bossMode" {{#if bossMode}}checked{{/if}} />
+      Boss Encounter
+    </label>
+  </section>
+
+  {{#if autoFillWarning}}
+    <p class="auto-fill-warning">{{autoFillWarning}}</p>
+  {{/if}}
+
+  <div class="builder-columns">
+
+    <section class="monster-browser">
+      <div class="monster-filter-row">
+        <input type="search" name="searchTerm" placeholder="Search monsters..." value="{{searchTerm}}" />
+        <select name="crFilter">
+          <option value="any" {{#if (eq crFilter "any")}}selected{{/if}}>Any CR</option>
+          {{#each availableCrs}}
+            <option value="{{this.value}}" {{#if (eq ../crFilter this.value)}}selected{{/if}}>CR {{this.label}}</option>
+          {{/each}}
+        </select>
+      </div>
+      <div class="monster-filter-row monster-filter-row-secondary">
+        <select name="sizeFilter">
+          <option value="any" {{#if (eq sizeFilter "any")}}selected{{/if}}>Any Size</option>
+          {{#each availableSizes}}
+            <option value="{{this.value}}" {{#if (eq ../sizeFilter this.value)}}selected{{/if}}>{{this.label}}</option>
+          {{/each}}
+        </select>
+        <select name="subtypeFilter">
+          <option value="any" {{#if (eq subtypeFilter "any")}}selected{{/if}}>Any Subtype</option>
+          {{#each availableSubtypes}}
+            <option value="{{this}}" {{#if (eq ../subtypeFilter this)}}selected{{/if}}>{{this}}</option>
+          {{/each}}
+        </select>
+        {{#if availableHabitats.length}}
+          <select name="habitatFilter">
+            <option value="any" {{#if (eq habitatFilter "any")}}selected{{/if}}>Any Habitat</option>
+            {{#each availableHabitats}}
+              <option value="{{this}}" {{#if (eq ../habitatFilter this)}}selected{{/if}}>{{this}}</option>
+            {{/each}}
+          </select>
+        {{/if}}
+      </div>
+      <ul class="monster-list">
+        {{#each monsters}}
+          <li class="monster-entry" data-action="addMonster" data-uuid="{{this.uuid}}">
+            <img src="{{this.img}}" width="24" height="24" />
+            <span class="monster-name">{{this.name}}</span>
+            <span class="monster-cr">CR {{this.cr}}</span>
+            <span class="monster-xp">{{this.xp}} XP</span>
+            <span class="monster-source">{{this.sourceLabel}}</span>
+          </li>
+        {{/each}}
+      </ul>
+    </section>
+
+    <section class="encounter-list">
+      <h3 class="encounter-header">
+        <span>Encounter</span>
+        <button type="button" class="delete-btn square-btn" data-action="reset" title="Clear all">×</button>
+      </h3>
+      <ul>
+        {{#each encounterEntries}}
+          <li>
+            <span>{{this.count}}x {{this.monster.name}} ({{this.monster.xp}} XP each)</span>
+            <span class="qty-buttons">
+              <button type="button" data-action="removeMonster" data-uuid="{{this.monster.uuid}}">−</button>
+              <button type="button" data-action="addMonster" data-uuid="{{this.monster.uuid}}">+</button>
+              <button type="button" class="delete-btn" data-action="deleteMonster" data-uuid="{{this.monster.uuid}}">×</button>
+            </span>
+          </li>
+        {{/each}}
+      </ul>
+    </section>
+
+  </div>
+
+  {{/if}}
+
+  {{#if (eq activeTab "loot")}}
+
+  <details class="compendium-tree" data-tree="loot" {{#if lootCompendiumTreeOpen}}open{{/if}}>
+    <summary>Item Compendiums ({{lootCompendiums.length}} packs)</summary>
+    {{#each groupedLootCompendiums}}
+      <details class="compendium-group" data-group="{{this.groupKey}}" {{#if this.isOpen}}open{{/if}}>
+        <summary>
+          <input type="checkbox" class="{{#if this.mixed}}mixed-state{{/if}}" data-action="toggleLootGroup" data-group="{{this.groupKey}}" {{#if this.allEnabled}}checked{{/if}} />
+          {{#if this.mixed}}<span class="mixed-marker" title="Some packs in this group are selected">●</span>{{/if}}
+          {{this.groupLabel}}
+        </summary>
+        <div class="compendium-group-packs">
+          {{#each this.packs}}
+            <label class="compendium-toggle">
+              <input type="checkbox" data-action="toggleLootCompendium" data-collection="{{this.collection}}" {{#if this.enabled}}checked{{/if}} />
+              {{this.label}} <span class="pack-count">({{this.total}})</span>
+            </label>
+          {{/each}}
+        </div>
+      </details>
+    {{/each}}
+  </details>
+
+  <section class="loot-header">
+    <p>Hoard tier is based on party level (currently level {{lootTierBasis}}). Highest monster CR in your encounter: {{highestCr}} — shown for reference only, no longer used for the tier.</p>
+    <button type="button" data-action="rollLoot">Roll Suggested Loot (DMG 2024)</button>
+    {{#if lootPlan}}
+      <span class="loot-tier-label">
+        Tier {{lootPlan.tier}}
+        {{#if (eq lootPlan.confidence "approximate")}}<span class="over-budget">(approximate — verify against your book)</span>{{/if}}
+      </span>
+    {{/if}}
+  </section>
+
+  {{#if lootPlan}}
+
+  <div class="builder-columns">
+
+    <section class="monster-browser">
+      <div class="monster-filter-row">
+        <input type="search" name="lootSearchTerm" placeholder="Search items..." value="{{lootSearchTerm}}" />
+        <select name="lootRarityFilter">
+          <option value="any" {{#if (eq lootRarityFilter "any")}}selected{{/if}}>Any Rarity</option>
+          {{#each availableLootRarities}}
+            <option value="{{this}}" {{#if (eq ../lootRarityFilter this)}}selected{{/if}}>{{this}}</option>
+          {{/each}}
+        </select>
+      </div>
+      <ul class="monster-list loot-item-list">
+        {{#each lootItems}}
+          <li class="loot-item-entry" data-action="addLootItem" data-uuid="{{this.uuid}}">
+            <img src="{{this.img}}" width="24" height="24" />
+            <span class="monster-name">{{this.name}}</span>
+            <span class="monster-cr">{{this.rarity}}</span>
+            <span class="monster-source">{{this.sourceLabel}}</span>
+          </li>
+        {{/each}}
+      </ul>
+    </section>
+
+    <section class="encounter-list loot-plan-column">
+      <h3>Coins</h3>
+      <div class="loot-coin-row">
+        <label>CP <input type="number" name="lootCoin-cp" min="0" value="{{lootPlan.coins.cp}}" /></label>
+        <label>SP <input type="number" name="lootCoin-sp" min="0" value="{{lootPlan.coins.sp}}" /></label>
+        <label>EP <input type="number" name="lootCoin-ep" min="0" value="{{lootPlan.coins.ep}}" /></label>
+        <label>GP <input type="number" name="lootCoin-gp" min="0" value="{{lootPlan.coins.gp}}" /></label>
+        <label>PP <input type="number" name="lootCoin-pp" min="0" value="{{lootPlan.coins.pp}}" /></label>
+      </div>
+
+      <h3>Gems</h3>
+      <div class="loot-coin-row">
+        <label>Count <input type="number" name="lootGemsArtCount" min="0" value="{{lootPlan.gemsOrArt.count}}" /></label>
+        <label>GP each <input type="number" name="lootGemsArtValue" min="0" value="{{lootPlan.gemsOrArt.unitValue}}" /></label>
+      </div>
+
+      <h3>Magic Items by Rarity <button type="button" class="reroll-btn" data-action="rerollLoot">Reroll Items</button></h3>
+      <div class="loot-rarity-rows">
+        {{#each rarityRows}}
+          <label class="loot-rarity-row">
+            {{this.rarity}}
+            <input type="number" name="lootRarity-{{this.rarity}}" min="0" value="{{this.count}}" />
+          </label>
+        {{/each}}
+      </div>
+
+      <h3>Items</h3>
+      <ul>
+        {{#each lootPlan.items}}
+          <li>
+            <span>{{this.count}}x {{this.name}} <em>({{this.rarity}})</em></span>
+            <span class="qty-buttons">
+              <button type="button" data-action="removeLootItem" data-uuid="{{this.uuid}}">−</button>
+              <button type="button" data-action="addLootItem" data-uuid="{{this.uuid}}">+</button>
+              <button type="button" class="delete-btn" data-action="deleteLootItem" data-uuid="{{this.uuid}}">×</button>
+            </span>
+          </li>
+        {{/each}}
+      </ul>
+    </section>
+
+  </div>
+
+  {{else}}
+    <p>Click "Roll Suggested Loot" to generate a DMG-based starting point for the current party level, or search below to add specific items from scratch.</p>
+  {{/if}}
+
+  {{/if}}
+
+  </div>
+
+  <footer>
+    <button type="button" data-action="reset">Reset Encounter</button>
+    <button type="button" data-action="generateLoot">Generate Loot</button>
+    <button type="button" data-action="createCombat">Create Combat</button>
+  </footer>
+
+</div>

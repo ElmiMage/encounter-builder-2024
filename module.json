@@ -1,0 +1,40 @@
+{
+  "id": "encounter-builder-2024",
+  "title": "Encounter Builder (2024 Rules)",
+  "description": "A modern, actively maintained encounter builder for D&D 5e (2024 rules) in Foundry VTT. Calculates XP budgets using the 2024 Dungeon Master's Guide system (Low/Moderate/High, no group multipliers) and lets you pull monsters from any loaded Actor compendium, including your own homebrew.",
+  "version": "0.1.0",
+  "compatibility": {
+    "minimum": "12",
+    "verified": "13"
+  },
+  "relationships": {
+    "systems": [
+      {
+        "id": "dnd5e",
+        "type": "system",
+        "compatibility": {
+          "minimum": "3.0"
+        }
+      }
+    ]
+  },
+  "authors": [
+    { "name": "Stephan" }
+  ],
+  "esmodules": [
+    "scripts/main.js"
+  ],
+  "styles": [
+    "styles/encounter-builder.css"
+  ],
+  "languages": [
+    {
+      "lang": "en",
+      "name": "English",
+      "path": "lang/en.json"
+    }
+  ],
+  "url": "",
+  "manifest": "",
+  "download": ""
+}
