@@ -1,5 +1,7 @@
 # Encounter Builder (2024 Rules)
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/elmimage)
+
 Foundry VTT module for D&D 5e (2024 rules): builds encounters against the
 2024 DMG's per-character XP budget, and generates 2024 DMG-style loot —
 both a per-monster "Individual Treasure" purse and a full Treasure Hoard —
@@ -79,3 +81,9 @@ outside a live Foundry session — everything else (all `scripts/*.js` pure
 logic, including the treasure/loot tables and the smoothed-level math) has
 been checked with plain Node, and probability/gating claims are verified
 with simulated rolls before being called done.
+
+## Support
+
+This module is free and will stay free. If it saved you some prep time and
+you feel like buying me a coffee, that's always appreciated — but never
+expected: [ko-fi.com/elmimage](https://ko-fi.com/elmimage)
