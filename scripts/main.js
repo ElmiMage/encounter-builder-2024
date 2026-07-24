@@ -33,6 +33,38 @@ Hooks.once("init", () => {
     type: Array,
     default: [],
   });
+
+  // User-facing preferences, shown under Configure Settings > Module
+  // Settings. Client-scoped like the compendium selection above — these
+  // are personal tool preferences for whichever GM opens the app, not a
+  // world-wide rule, and stay consistent with a multi-GM world not
+  // overwriting each other's choices.
+  game.settings.register("encounter-builder-2024", "autoSyncParty", {
+    name: "Auto-sync Party Level/Size from Party actor",
+    hint: "When opening the Encounter Builder, automatically set Party Level and Size from Foundry's designated Party actor (if one exists). Turn off if you prefer to always set these manually.",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: true,
+  });
+  game.settings.register("encounter-builder-2024", "defaultDifficulty", {
+    name: "Default Difficulty",
+    hint: "The Difficulty the Encounter Builder starts on each time you reload Foundry.",
+    scope: "client",
+    config: true,
+    type: String,
+    choices: { low: "Low", moderate: "Moderate", high: "High" },
+    default: "moderate",
+  });
+  game.settings.register("encounter-builder-2024", "defaultLootBasis", {
+    name: "Default Loot Basis (Treasure Hoard tab)",
+    hint: "Whether the Treasure Hoard tab starts on the RAW tier table, or automatically on the homebrew smoothed table matching the current Party Level.",
+    scope: "client",
+    config: true,
+    type: String,
+    choices: { auto: "Tier (RAW)", partyLevel: "Match Party Level (smoothed)" },
+    default: "auto",
+  });
 });
 
 // Adds a button to the Combat sidebar tab, next to the existing controls.

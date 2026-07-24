@@ -65,6 +65,12 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   // not re-applied every render, so manual edits during a session aren't
   // silently overwritten. Reset on close so reopening re-syncs.
   #partyAutoSynced = false;
+  // Tracks whether the one-time module-settings defaults (Default
+  // Difficulty, Default Loot Basis) have been applied yet for this
+  // "session" of the app being open — same one-time-on-open, reset-on-close
+  // pattern as #partyAutoSynced, and deliberately applied AFTER the party
+  // sync above so "match Party Level" can see the just-synced value.
+  #defaultsApplied = false;
   difficulty = "moderate";
   searchTerm = "";
   desiredCount = 4;
@@ -239,7 +245,16 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   async _prepareContext() {
     if (!this.#partyAutoSynced) {
       this.#partyAutoSynced = true;
-      this.#syncFromPartyActor({ silent: true });
+      if (game.settings.get("encounter-builder-2024", "autoSyncParty")) {
+        this.#syncFromPartyActor({ silent: true });
+      }
+    }
+    if (!this.#defaultsApplied) {
+      this.#defaultsApplied = true;
+      this.difficulty = game.settings.get("encounter-builder-2024", "defaultDifficulty");
+      if (game.settings.get("encounter-builder-2024", "defaultLootBasis") === "partyLevel") {
+        this.hoardLootBasis = String(this.partyLevel);
+      }
     }
     if (this.compendiums.length === 0) {
       const disabled = new Set(game.settings.get("encounter-builder-2024", "disabledMonsterCompendiums"));
@@ -699,6 +714,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     // Re-sync from the Party actor next time the app opens, in case
     // characters leveled up or the party roster changed while it was closed.
     this.#partyAutoSynced = false;
+    this.#defaultsApplied = false;
     return super._onClose?.(options);
   }
 
