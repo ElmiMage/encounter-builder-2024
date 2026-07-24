@@ -7,6 +7,92 @@
   overflow: hidden;
 }
 
+/* Own the look of every field explicitly instead of relying on Foundry's
+   core theme for it — different input types (search/number/select) were
+   inheriting inconsistent defaults, some with no visible background or
+   border at all, so they visually merged into the window background or
+   into each other. */
+.encounter-builder-2024 input[type="text"],
+.encounter-builder-2024 input[type="search"],
+.encounter-builder-2024 input[type="number"],
+.encounter-builder-2024 select {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  color: inherit;
+  padding: 0.25rem 0.4rem;
+  /* rem, not em: several of these sit inside a <label> (font-size:
+     0.85em), so an em-based size here would inherit that 0.85 and end
+     up smaller than fields that aren't label-wrapped — rem anchors to
+     the root font-size instead, so every field matches regardless of
+     where it's nested. */
+  font-size: 1rem;
+}
+
+.encounter-builder-2024 input[type="text"]:focus,
+.encounter-builder-2024 input[type="search"]:focus,
+.encounter-builder-2024 input[type="number"]:focus,
+.encounter-builder-2024 select:focus {
+  border-color: #c9a227;
+  outline: none;
+}
+
+/* Without this, Chromium/Electron (what Foundry runs on) renders the
+   native <select> popup list using the OS light theme regardless of the
+   closed control's own styling — color-scheme opts it into the browser's
+   built-in dark palette instead, and the explicit option colors nudge
+   that palette to match this module's own theme rather than a generic gray. */
+.encounter-builder-2024 select {
+  color-scheme: dark;
+}
+
+.encounter-builder-2024 select option {
+  background-color: #2b2a25;
+  color: #e8e6e0;
+}
+
+.encounter-builder-2024 label {
+  font-size: 0.85em;
+  opacity: 0.85;
+}
+
+.encounter-builder-2024 h3 {
+  font-size: 0.95em;
+  font-weight: 600;
+  margin: 0.5rem 0 0.3rem;
+  padding-bottom: 0.2rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* Thin, theme-matched scrollbars instead of the host's default (jarring
+   in a dark, gold-accented panel) — Chromium/Electron only, which is what
+   Foundry runs on, so no fallback is needed. */
+.encounter-builder-2024 .monster-list,
+.encounter-builder-2024 .encounter-list ul,
+.encounter-builder-2024 .loot-plan-column {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+
+.encounter-builder-2024 .monster-list::-webkit-scrollbar,
+.encounter-builder-2024 .encounter-list ul::-webkit-scrollbar,
+.encounter-builder-2024 .loot-plan-column::-webkit-scrollbar {
+  width: 7px;
+}
+
+.encounter-builder-2024 .monster-list::-webkit-scrollbar-track,
+.encounter-builder-2024 .encounter-list ul::-webkit-scrollbar-track,
+.encounter-builder-2024 .loot-plan-column::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.encounter-builder-2024 .monster-list::-webkit-scrollbar-thumb,
+.encounter-builder-2024 .encounter-list ul::-webkit-scrollbar-thumb,
+.encounter-builder-2024 .loot-plan-column::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
 .encounter-builder-2024 .scrollable-content {
   flex: 1 1 auto;
   overflow-y: auto;
@@ -26,7 +112,19 @@
 
 .encounter-builder-2024 .party-config {
   display: flex;
+  align-items: flex-end;
   gap: 1rem;
+}
+
+.encounter-builder-2024 .party-config label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.encounter-builder-2024 .party-config select {
+  width: auto;
+  min-width: 4.5em;
 }
 
 .encounter-builder-2024 .budget-track {
@@ -62,11 +160,13 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 220px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
 }
 
-.encounter-builder-2024 .monster-entry {
+.encounter-builder-2024 .monster-entry,
+.encounter-builder-2024 .loot-item-entry {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -74,12 +174,34 @@
   cursor: pointer;
 }
 
-.encounter-builder-2024 .monster-entry:hover {
+.encounter-builder-2024 .monster-entry:hover,
+.encounter-builder-2024 .loot-item-entry:hover {
   background: rgba(255, 255, 255, 0.08);
 }
 
 .encounter-builder-2024 .monster-name {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.encounter-builder-2024 .monster-cr,
+.encounter-builder-2024 .monster-xp {
+  flex: 0 0 auto;
+  min-width: 3.5em;
+  text-align: right;
+}
+
+.encounter-builder-2024 .monster-source {
+  flex: 0 0 auto;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85em;
+  opacity: 0.75;
 }
 
 .encounter-builder-2024 .auto-fill-controls {
@@ -94,6 +216,17 @@
   align-items: center;
   gap: 0.35rem;
   white-space: nowrap;
+  /* Overrides the generic `label` rule's 0.85em — this label's text
+     sits directly beside the Auto-Fill button and should read at the
+     same size as it, not as a secondary/caption-style label. */
+  font-size: 1rem;
+}
+
+.encounter-builder-2024 .boss-mode-toggle input[type="checkbox"] {
+  width: 1.15em;
+  height: 1.15em;
+  accent-color: #c9a227;
+  cursor: pointer;
 }
 
 .encounter-builder-2024 .auto-fill-warning {
@@ -113,7 +246,9 @@
   flex: 1 1 60%;
   display: flex;
   flex-direction: column;
+  gap: 0.4rem;
   min-width: 0;
+  min-height: 0;
 }
 
 .encounter-builder-2024 .encounter-list {
@@ -127,7 +262,21 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 220px;
+}
+
+/* Plain Encounter-tab list (not the multi-section Loot column) grows to
+   fill the available height instead of stopping at a fixed pixel cap,
+   so a long monster list doesn't leave a dead blank area below it while
+   still needing its own scroll for very long lists. */
+.encounter-builder-2024 .encounter-list:not(.loot-plan-column) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.encounter-builder-2024 .encounter-list:not(.loot-plan-column) ul {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -139,6 +288,17 @@
   padding: 0.15rem 0;
 }
 
+.encounter-builder-2024 .entry-name-link {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
+.encounter-builder-2024 .entry-name-link:hover {
+  color: #c9a227;
+  text-decoration-style: solid;
+}
+
 .encounter-builder-2024 .qty-buttons {
   display: flex;
   gap: 0.25rem;
@@ -147,6 +307,16 @@
 
 .encounter-builder-2024 .qty-buttons button {
   min-width: 1.6rem;
+}
+
+.encounter-builder-2024 .lair-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.8em;
+  opacity: 0.85;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .encounter-builder-2024 .delete-btn {
@@ -186,28 +356,60 @@
   margin-bottom: 0.25rem;
 }
 
+/* Fully reset instead of layering on top of Foundry's default button look
+   (which includes its own box-shadow) — that combination was what turned
+   the intended crisp gold underline into a blurry glow. The active-state
+   underline is drawn with box-shadow instead of border so it's entirely
+   our own, unaffected by any host button styling. */
 .encounter-builder-2024 .eb-tab-button {
-  background: none;
+  background: transparent;
   border: none;
-  border-bottom: 2px solid transparent;
-  padding: 0.35rem 0.75rem;
+  box-shadow: none;
+  border-radius: 3px 3px 0 0;
+  padding: 0.35rem 0.9rem;
   cursor: pointer;
+  color: rgba(232, 230, 224, 0.65);
+  font-weight: 500;
+}
+
+.encounter-builder-2024 .eb-tab-button:hover {
+  color: #e8e6e0;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: none;
 }
 
 .encounter-builder-2024 .eb-tab-button.active {
-  border-bottom-color: #c9a227;
-  font-weight: bold;
+  color: #c9a227;
+  font-weight: 700;
+  background: rgba(201, 162, 39, 0.12);
+  box-shadow: inset 0 -2px 0 0 #c9a227;
 }
 
 .encounter-builder-2024 .loot-header {
   display: flex;
-  align-items: center;
+  /* flex-end, not center: the Loot Basis <label> is a two-line stack
+     (text above the select), so center-aligning against plain buttons
+     put the buttons up near the label text instead of level with the
+     select control itself — matches .auto-fill-controls' same fix. */
+  align-items: flex-end;
   gap: 1rem;
   flex-wrap: wrap;
 }
 
 .encounter-builder-2024 .loot-tier-label {
   font-weight: bold;
+}
+
+.encounter-builder-2024 .loot-homebrew-label {
+  color: #c9a227;
+  font-weight: normal;
+  margin-left: 0.35rem;
+}
+
+.encounter-builder-2024 .loot-basis-select {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
 }
 
 .encounter-builder-2024 .loot-plan-column {
@@ -262,10 +464,9 @@
   line-height: 1;
 }
 
-.encounter-builder-2024 .reroll-btn {
-  margin-left: 0.5rem;
-  font-size: 0.75em;
-  padding: 0.1rem 0.5rem;
+.encounter-builder-2024 .add-item-btn {
+  flex-shrink: 0;
+  cursor: pointer;
 }
 
 .encounter-builder-2024 .compendium-tree {

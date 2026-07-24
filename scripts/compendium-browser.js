@@ -21,6 +21,11 @@ const INDEX_FIELDS = [
   // wasn't confirmed from a static code read. Harmless to request even
   // if it doesn't exist — getIndex simply returns undefined for it.
   "system.details.habitat",
+  // Whether this monster HAS lair actions at all (system.resources.lair.value,
+  // verified against the dnd5e source) — distinct from system.resources.lair.inside,
+  // which is a live combat-state flag on a placed Actor, not compendium data,
+  // and is set per-encounter in the app UI instead (see #onToggleLair).
+  "system.resources.lair.value",
   "img",
 ];
 
@@ -117,7 +122,13 @@ export async function listMonsterCompendiums() {
   const results = [];
 
   for (const pack of actorPacks) {
-    const index = await pack.getIndex({ fields: INDEX_FIELDS });
+    let index;
+    try {
+      index = await pack.getIndex({ fields: INDEX_FIELDS });
+    } catch (err) {
+      console.warn(`Encounter Builder | failed to read index for pack "${pack.collection}", skipping`, err);
+      continue;
+    }
     const monsterCount = index.filter(isMonsterEntry).length;
     if (monsterCount === 0) continue;
 
@@ -153,7 +164,13 @@ export async function loadMonsterIndex(collectionIds = null) {
 
   const monsters = [];
   for (const pack of packs) {
-    const index = await pack.getIndex({ fields: INDEX_FIELDS });
+    let index;
+    try {
+      index = await pack.getIndex({ fields: INDEX_FIELDS });
+    } catch (err) {
+      console.warn(`Encounter Builder | failed to read index for pack "${pack.collection}", skipping`, err);
+      continue;
+    }
     for (const entry of index) {
       if (!isMonsterEntry(entry)) continue;
 
@@ -174,6 +191,10 @@ export async function loadMonsterIndex(collectionIds = null) {
         // from a static code read (could be a plain array, a Set-like
         // object, or a {value, custom} wrapper depending on dnd5e version).
         habitats: normalizeHabitat(entry.system?.details?.habitat),
+        // Verified against dnd5e source: system.resources.lair.value means
+        // the monster has lair actions available at all (as opposed to
+        // .inside, a live combat-state flag not present in compendium data).
+        hasLairActions: !!entry.system?.resources?.lair?.value,
         sourcePack: pack.collection,
         sourceLabel: getPackSourceLabel(pack),
       });

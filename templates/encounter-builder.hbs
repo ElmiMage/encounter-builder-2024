@@ -4,6 +4,7 @@
   <nav class="eb-tabs">
     <button type="button" class="eb-tab-button" data-action="switchTab" data-tab="encounter">Encounter</button>
     <button type="button" class="eb-tab-button" data-action="switchTab" data-tab="loot">Loot</button>
+    <button type="button" class="eb-tab-button" data-action="switchTab" data-tab="hoard">Treasure Hoard</button>
   </nav>
 
   <section class="party-config">
@@ -31,6 +32,7 @@
         <option value="high" {{#if (eq difficulty "high")}}selected{{/if}}>High</option>
       </select>
     </label>
+    <button type="button" data-action="syncParty" title="Reads Foundry's designated Party actor (dnd5e's Group/Party feature) and sets Party Level/Size from its current characters">Sync from Party</button>
   </section>
 
   <section class="budget-bar">
@@ -69,14 +71,18 @@
   <section class="auto-fill-controls">
     <label>
       Desired Monster Count
-      <input type="number" name="desiredCount" min="1" max="30" value="{{desiredCount}}" />
+      <select name="desiredCount">
+        {{#each desiredCountOptions}}
+          <option value="{{this}}" {{#if (eq this ../desiredCount)}}selected{{/if}}>{{this}}</option>
+        {{/each}}
+      </select>
     </label>
     <label>
       Creature Type
       <select name="creatureTypeFilter">
         <option value="any" {{#if (eq creatureTypeFilter "any")}}selected{{/if}}>Any</option>
         {{#each creatureTypes}}
-          <option value="{{this}}" {{#if (eq ../creatureTypeFilter this)}}selected{{/if}}>{{this}}</option>
+          <option value="{{this}}" {{#if (eq ../creatureTypeFilter this)}}selected{{/if}}>{{humanize this}}</option>
         {{/each}}
       </select>
     </label>
@@ -113,26 +119,27 @@
         <select name="subtypeFilter">
           <option value="any" {{#if (eq subtypeFilter "any")}}selected{{/if}}>Any Subtype</option>
           {{#each availableSubtypes}}
-            <option value="{{this}}" {{#if (eq ../subtypeFilter this)}}selected{{/if}}>{{this}}</option>
+            <option value="{{this}}" {{#if (eq ../subtypeFilter this)}}selected{{/if}}>{{humanize this}}</option>
           {{/each}}
         </select>
         {{#if availableHabitats.length}}
           <select name="habitatFilter">
             <option value="any" {{#if (eq habitatFilter "any")}}selected{{/if}}>Any Habitat</option>
             {{#each availableHabitats}}
-              <option value="{{this}}" {{#if (eq ../habitatFilter this)}}selected{{/if}}>{{this}}</option>
+              <option value="{{this}}" {{#if (eq ../habitatFilter this)}}selected{{/if}}>{{humanize this}}</option>
             {{/each}}
           </select>
         {{/if}}
       </div>
       <ul class="monster-list">
         {{#each monsters}}
-          <li class="monster-entry" data-action="addMonster" data-uuid="{{this.uuid}}">
+          <li class="monster-entry" data-action="viewMonster" data-uuid="{{this.uuid}}" title="Click to view stat block">
             <img src="{{this.img}}" width="24" height="24" />
-            <span class="monster-name">{{this.name}}</span>
+            <span class="monster-name" title="{{this.name}}">{{this.name}}</span>
             <span class="monster-cr">CR {{this.cr}}</span>
-            <span class="monster-xp">{{this.xp}} XP</span>
+            <span class="monster-xp">{{#if this.xp}}{{this.xp}}{{else}}?{{/if}} XP</span>
             <span class="monster-source">{{this.sourceLabel}}</span>
+            <button type="button" class="add-item-btn square-btn" data-action="addMonster" data-uuid="{{this.uuid}}" title="Add to encounter">+</button>
           </li>
         {{/each}}
       </ul>
@@ -146,8 +153,13 @@
       <ul>
         {{#each encounterEntries}}
           <li>
-            <span>{{this.count}}x {{this.monster.name}} ({{this.monster.xp}} XP each)</span>
+            <span>{{this.count}}x <span class="entry-name-link" data-action="viewMonster" data-uuid="{{this.monster.uuid}}" title="Click to view stat block">{{this.monster.name}}</span> ({{#if this.effectiveXp}}{{this.effectiveXp}}{{else}}?{{/if}} XP each{{#if this.inLair}}, in lair{{/if}})</span>
             <span class="qty-buttons">
+              {{#if this.monster.hasLairActions}}
+                <label class="lair-toggle" title="Fighting in its own lair — adjusts XP to CR+1, matching the 2024/2025 Monster Manual's lair-action fix">
+                  <input type="checkbox" data-action="toggleLair" data-uuid="{{this.monster.uuid}}" {{#if this.inLair}}checked{{/if}} /> Lair
+                </label>
+              {{/if}}
               <button type="button" data-action="removeMonster" data-uuid="{{this.monster.uuid}}">−</button>
               <button type="button" data-action="addMonster" data-uuid="{{this.monster.uuid}}">+</button>
               <button type="button" class="delete-btn" data-action="deleteMonster" data-uuid="{{this.monster.uuid}}">×</button>
@@ -161,7 +173,7 @@
 
   {{/if}}
 
-  {{#if (eq activeTab "loot")}}
+  {{#if (or (eq activeTab "hoard") (eq activeTab "loot"))}}
 
   <details class="compendium-tree" data-tree="loot" {{#if lootCompendiumTreeOpen}}open{{/if}}>
     <summary>Item Compendiums ({{lootCompendiums.length}} packs)</summary>
@@ -184,74 +196,55 @@
     {{/each}}
   </details>
 
-  <section class="loot-header">
-    <p>Hoard tier is based on party level (currently level {{lootTierBasis}}). Highest monster CR in your encounter: {{highestCr}} — shown for reference only, no longer used for the tier.</p>
-    <button type="button" data-action="rollLoot">Roll Suggested Loot (DMG 2024)</button>
-    {{#if lootPlan}}
-      <span class="loot-tier-label">
-        Tier {{lootPlan.tier}}
-        {{#if (eq lootPlan.confidence "approximate")}}<span class="over-budget">(approximate — verify against your book)</span>{{/if}}
-      </span>
-    {{/if}}
-  </section>
+  {{/if}}
 
-  {{#if lootPlan}}
+  {{#if (eq activeTab "loot")}}
+
+  <section class="loot-header">
+    <p>Individual Treasure (2024 DMG) — the incidental coin (and any items you add below) a single non-hoarding monster carries, distinct from a Treasure Hoard. Coins are rolled once per creature currently selected in the Encounter tab ({{individualTreasureCreatureCount}} creature(s)), then summed into one purse.</p>
+    <button type="button" data-action="rollIndividualTreasure">Roll Individual Treasure</button>
+  </section>
 
   <div class="builder-columns">
 
     <section class="monster-browser">
       <div class="monster-filter-row">
-        <input type="search" name="lootSearchTerm" placeholder="Search items..." value="{{lootSearchTerm}}" />
-        <select name="lootRarityFilter">
-          <option value="any" {{#if (eq lootRarityFilter "any")}}selected{{/if}}>Any Rarity</option>
+        <input type="search" name="individualSearchTerm" placeholder="Search items..." value="{{individualSearchTerm}}" />
+        <select name="individualRarityFilter">
+          <option value="any" {{#if (eq individualRarityFilter "any")}}selected{{/if}}>Any Rarity</option>
           {{#each availableLootRarities}}
-            <option value="{{this}}" {{#if (eq ../lootRarityFilter this)}}selected{{/if}}>{{this}}</option>
+            <option value="{{this}}" {{#if (eq ../individualRarityFilter this)}}selected{{/if}}>{{humanize this}}</option>
           {{/each}}
         </select>
       </div>
       <ul class="monster-list loot-item-list">
         {{#each lootItems}}
-          <li class="loot-item-entry" data-action="addLootItem" data-uuid="{{this.uuid}}">
+          <li class="loot-item-entry" data-action="viewLootItem" data-uuid="{{this.uuid}}" title="Click to view description">
             <img src="{{this.img}}" width="24" height="24" />
-            <span class="monster-name">{{this.name}}</span>
-            <span class="monster-cr">{{this.rarity}}</span>
+            <span class="monster-name" title="{{this.name}}">{{this.name}}</span>
+            <span class="monster-cr">{{humanize this.rarity}}</span>
             <span class="monster-source">{{this.sourceLabel}}</span>
+            <button type="button" class="add-item-btn square-btn" data-action="addLootItem" data-uuid="{{this.uuid}}" title="Add to plan">+</button>
           </li>
         {{/each}}
       </ul>
     </section>
 
     <section class="encounter-list loot-plan-column">
-      <h3>Coins</h3>
+      <h3>Coins ({{individualTreasureRolledCount}} creature(s) rolled)</h3>
       <div class="loot-coin-row">
-        <label>CP <input type="number" name="lootCoin-cp" min="0" value="{{lootPlan.coins.cp}}" /></label>
-        <label>SP <input type="number" name="lootCoin-sp" min="0" value="{{lootPlan.coins.sp}}" /></label>
-        <label>EP <input type="number" name="lootCoin-ep" min="0" value="{{lootPlan.coins.ep}}" /></label>
-        <label>GP <input type="number" name="lootCoin-gp" min="0" value="{{lootPlan.coins.gp}}" /></label>
-        <label>PP <input type="number" name="lootCoin-pp" min="0" value="{{lootPlan.coins.pp}}" /></label>
-      </div>
-
-      <h3>Gems</h3>
-      <div class="loot-coin-row">
-        <label>Count <input type="number" name="lootGemsArtCount" min="0" value="{{lootPlan.gemsOrArt.count}}" /></label>
-        <label>GP each <input type="number" name="lootGemsArtValue" min="0" value="{{lootPlan.gemsOrArt.unitValue}}" /></label>
-      </div>
-
-      <h3>Magic Items by Rarity <button type="button" class="reroll-btn" data-action="rerollLoot">Reroll Items</button></h3>
-      <div class="loot-rarity-rows">
-        {{#each rarityRows}}
-          <label class="loot-rarity-row">
-            {{this.rarity}}
-            <input type="number" name="lootRarity-{{this.rarity}}" min="0" value="{{this.count}}" />
-          </label>
-        {{/each}}
+        <label>CP <input type="number" name="individualCoin-cp" min="0" value="{{individualTreasureCoins.cp}}" /></label>
+        <label>SP <input type="number" name="individualCoin-sp" min="0" value="{{individualTreasureCoins.sp}}" /></label>
+        <label>EP <input type="number" name="individualCoin-ep" min="0" value="{{individualTreasureCoins.ep}}" /></label>
+        <label>GP <input type="number" name="individualCoin-gp" min="0" value="{{individualTreasureCoins.gp}}" /></label>
+        <label>PP <input type="number" name="individualCoin-pp" min="0" value="{{individualTreasureCoins.pp}}" /></label>
       </div>
 
       <h3>Items</h3>
       <ul>
-        {{#each lootPlan.items}}
+        {{#each individualTreasureItems}}
           <li>
-            <span>{{this.count}}x {{this.name}} <em>({{this.rarity}})</em></span>
+            <span>{{this.count}}x <span class="entry-name-link" data-action="viewLootItem" data-uuid="{{this.uuid}}" title="Click to view item">{{this.name}}</span> <em>({{humanize this.rarity}})</em></span>
             <span class="qty-buttons">
               <button type="button" data-action="removeLootItem" data-uuid="{{this.uuid}}">−</button>
               <button type="button" data-action="addLootItem" data-uuid="{{this.uuid}}">+</button>
@@ -264,9 +257,99 @@
 
   </div>
 
-  {{else}}
-    <p>Click "Roll Suggested Loot" to generate a DMG-based starting point for the current party level, or search below to add specific items from scratch.</p>
   {{/if}}
+
+  {{#if (eq activeTab "hoard")}}
+
+  <section class="loot-header">
+    <p>Hoard tier is based on party level (currently level {{lootTierBasis}}), unless overridden below. Highest monster CR in your encounter: {{highestCr}} — shown for reference only, no longer used for the tier.</p>
+    <label class="loot-basis-select">
+      Loot Basis
+      <select name="hoardLootBasis">
+        <option value="auto" {{#if (eq hoardLootBasis "auto")}}selected{{/if}}>Tier (RAW)</option>
+        {{#each lootLevelOptions}}
+          <option value="{{this}}" {{#if (eq ../hoardLootBasis this)}}selected{{/if}}>Level {{this}} (homebrew)</option>
+        {{/each}}
+      </select>
+    </label>
+    <button type="button" data-action="rollLoot">Roll Suggested Loot (DMG 2024)</button>
+    {{#if lootPlan.tier}}
+      <button type="button" data-action="rerollLoot">Reroll Magic Items</button>
+      <span class="loot-tier-label">
+        Tier {{lootPlan.tier}}
+        {{#if (eq lootPlan.confidence "approximate")}}<span class="over-budget">(approximate — verify against your book)</span>{{/if}}
+        {{#if (eq lootPlan.confidence "homebrew")}}<span class="loot-homebrew-label">(homebrew — smoothed, not official DMG content)</span>{{/if}}
+      </span>
+    {{/if}}
+  </section>
+
+  <div class="builder-columns">
+
+    <section class="monster-browser">
+      <div class="monster-filter-row">
+        <input type="search" name="hoardSearchTerm" placeholder="Search items..." value="{{hoardSearchTerm}}" />
+        <select name="hoardRarityFilter">
+          <option value="any" {{#if (eq hoardRarityFilter "any")}}selected{{/if}}>Any Rarity</option>
+          {{#each availableLootRarities}}
+            <option value="{{this}}" {{#if (eq ../hoardRarityFilter this)}}selected{{/if}}>{{humanize this}}</option>
+          {{/each}}
+        </select>
+      </div>
+      <ul class="monster-list loot-item-list">
+        {{#each lootItems}}
+          <li class="loot-item-entry" data-action="viewLootItem" data-uuid="{{this.uuid}}" title="Click to view description">
+            <img src="{{this.img}}" width="24" height="24" />
+            <span class="monster-name" title="{{this.name}}">{{this.name}}</span>
+            <span class="monster-cr">{{humanize this.rarity}}</span>
+            <span class="monster-source">{{this.sourceLabel}}</span>
+            <button type="button" class="add-item-btn square-btn" data-action="addLootItem" data-uuid="{{this.uuid}}" title="Add to plan">+</button>
+          </li>
+        {{/each}}
+      </ul>
+    </section>
+
+    <section class="encounter-list loot-plan-column">
+      <h3>Coins</h3>
+      <div class="loot-coin-row">
+        <label>CP <input type="number" name="lootCoin-cp" min="0" value="{{lootPlanCoins.cp}}" /></label>
+        <label>SP <input type="number" name="lootCoin-sp" min="0" value="{{lootPlanCoins.sp}}" /></label>
+        <label>EP <input type="number" name="lootCoin-ep" min="0" value="{{lootPlanCoins.ep}}" /></label>
+        <label>GP <input type="number" name="lootCoin-gp" min="0" value="{{lootPlanCoins.gp}}" /></label>
+        <label>PP <input type="number" name="lootCoin-pp" min="0" value="{{lootPlanCoins.pp}}" /></label>
+      </div>
+
+      <h3>Gems</h3>
+      <div class="loot-coin-row">
+        <label>Count <input type="number" name="lootGemsArtCount" min="0" value="{{lootPlanGemsOrArt.count}}" /></label>
+        <label>GP each <input type="number" name="lootGemsArtValue" min="0" value="{{lootPlanGemsOrArt.unitValue}}" /></label>
+      </div>
+
+      <h3>Magic Items by Rarity</h3>
+      <div class="loot-rarity-rows">
+        {{#each rarityRows}}
+          <label class="loot-rarity-row">
+            {{humanize this.rarity}}
+            <input type="number" name="lootRarity-{{this.rarity}}" min="0" value="{{this.count}}" />
+          </label>
+        {{/each}}
+      </div>
+
+      <h3>Items</h3>
+      <ul>
+        {{#each lootPlanItems}}
+          <li>
+            <span>{{this.count}}x <span class="entry-name-link" data-action="viewLootItem" data-uuid="{{this.uuid}}" title="Click to view item">{{this.name}}</span> <em>({{humanize this.rarity}})</em></span>
+            <span class="qty-buttons">
+              <button type="button" data-action="removeLootItem" data-uuid="{{this.uuid}}">−</button>
+              <button type="button" data-action="addLootItem" data-uuid="{{this.uuid}}">+</button>
+              <button type="button" class="delete-btn" data-action="deleteLootItem" data-uuid="{{this.uuid}}">×</button>
+            </span>
+          </li>
+        {{/each}}
+      </ul>
+    </section>
+
+  </div>
 
   {{/if}}
 

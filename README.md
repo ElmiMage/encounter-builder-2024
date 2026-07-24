@@ -1,8 +1,9 @@
 # Encounter Builder (2024 Rules)
 
 Foundry VTT module for D&D 5e (2024 rules): builds encounters against the
-2024 DMG's per-character XP budget, and generates DMG-style treasure hoards
-with a full editable preview before creating anything.
+2024 DMG's per-character XP budget, and generates 2024 DMG-style loot —
+both a per-monster "Individual Treasure" purse and a full Treasure Hoard —
+with a fully editable preview before creating anything.
 
 ## Features
 
@@ -11,20 +12,54 @@ with a full editable preview before creating anything.
 - Browse monsters from ANY loaded Actor compendium (SRD + your own homebrew)
 - Filters: search, CR, size, subtype, creature type, habitat (speculative,
   only shown if your dnd5e version actually has habitat data)
-- Auto-Fill Remaining (with randomized variety + repeat cap) and Boss
-  Encounter mode (one strong creature + supporting adds)
+- Party Level/Size can be synced from Foundry's own designated Party actor
+  (dnd5e's Group/Party feature) via a "Sync from Party" button — auto-pulled
+  once when the app opens, never silently overwritten mid-session
+- Auto-Fill Remaining (randomized variety + repeat cap, respects every
+  active filter) and Boss Encounter mode (one strong creature + supporting
+  adds)
+- Lair Actions: monsters that have them get a per-encounter "Lair" toggle,
+  adjusting their XP to CR+1 for budget purposes — matches the 2024/2025
+  Monster Manual's fix for a 2014-era oversight where lair-fighting
+  monsters got no XP bump at all
+- Click a monster's name to open its stat block; a separate "+" button adds
+  it — same pattern everywhere a monster or item is listed in this module
 - Click-to-place token spiral formation on the canvas
 - Creates a real Combat encounter when you're happy with the picks
+- Compendium selection is remembered per-user across sessions
 
-**Loot tab**
-- DMG 2024 treasure hoard tables (Challenge 0-4 and 5-10 confirmed against
-  the book; 11-16 and 17+ are marked approximate — see comments in
-  treasure-tables.js)
-- Hoard tier is based on **party level**, not monster CR
-- Full preview before creating anything: coins, gems, and resolved magic
-  items with real names — not a blind roll
-- Reroll magic items with your own rarity counts
-- Search + add specific items from your own compendiums
+**Loot tab — Individual Treasure**
+- The 2024 DMG's smaller, separate "Individual Treasure" table: the
+  incidental coin a single non-hoarding monster carries, as opposed to a
+  full Treasure Hoard
+- Rolled once per creature currently selected in the Encounter tab, summed
+  into one purse — coins only (including electrum, which Treasure Hoard
+  never rolls), fully editable afterward
+- Search + manually add specific items from your own compendiums, on top
+  of or instead of the rolled coins
+
+**Treasure Hoard tab**
+- The 2024 DMG's detailed Treasure Hoard tables — coins, gems/art, and
+  resolved magic items with real names, not a blind roll
+- Coin formulas for all four CR tiers (0-4, 5-10, 11-16, 17+) are
+  cross-verified against independent sources and treated as confirmed; the
+  gems/magic-item band shape is a restructured (probability-preserving,
+  not row-by-row) approximation — see the confidence note in
+  `treasure-tables.js`
+- Hoard tier is based on **party level**, not monster CR — deliberate
+  choice, matches common practice among experienced DMs more closely than
+  strict RAW (see comments in `encounter-builder-app.js`)
+- **Loot Basis** dropdown: "Tier (RAW)" (default, follows Party Level) or a
+  specific character level 1-20, which uses an opt-in homebrew table that
+  smooths out the DMG's 4 wide tier bands into a per-level curve —
+  magnitudes interpolated log-linearly, magic-item rarity mix interpolated
+  from the DMG's own "Magic Items Awarded by Level" table with a hard
+  floor (very rare impossible below level 5, legendary below level 11) —
+  see `smoothed-loot-tables.js` for the full methodology
+- Reroll magic items using your own hand-edited rarity counts
+- Search + add specific items from your own compendiums; rarity filter is
+  ordered common→artifact, not alphabetically, and mundane (non-magical)
+  gear is excluded from the loot browser entirely
 - Creates a real Actor with real Items, placed as a **hidden, non-combat**
   token (never added to the Combat tracker — it doesn't fight)
 
@@ -40,5 +75,7 @@ with a full editable preview before creating anything.
 Actively developed. See `module.json` for the compatibility range
 (V12 minimum, tested against V13). Canvas-dependent code
 (`canvas-picker.js`, parts of `loot-generator.js`) can't be unit-tested
-outside a live Foundry session — everything else has been checked with
-plain Node.
+outside a live Foundry session — everything else (all `scripts/*.js` pure
+logic, including the treasure/loot tables and the smoothed-level math) has
+been checked with plain Node, and probability/gating claims are verified
+with simulated rolls before being called done.

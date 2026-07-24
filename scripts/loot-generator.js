@@ -1,26 +1,9 @@
-import { generateHoard } from "./treasure-tables.js";
+import { generateHoard, MAGIC_TABLE_TO_RARITY, RARITY_TIERS } from "./treasure-tables.js";
+import { generateSmoothedHoard } from "./smoothed-loot-tables.js";
 import { pickCanvasPoint } from "./canvas-picker.js";
 import { getPackSourceLabel, getPackGroupInfo } from "./compendium-browser.js";
 
-/**
- * Simplified mapping from DMG Magic Item Table letter to a dnd5e item
- * rarity. The real tables mix specific item types with sub-weightings
- * per rarity; this collapses each letter to its dominant rarity so we
- * can pull a real, correctly-built item from the GM's own compendiums
- * instead of maintaining a separate hardcoded item list.
- */
-const MAGIC_TABLE_TO_RARITY = {
-  A: "common",
-  B: "uncommon",
-  C: "uncommon",
-  D: "rare",
-  E: "rare",
-  F: "veryRare",
-  G: "legendary",
-};
-
-/** Fixed rarity tiers shown as adjustable count rows, regardless of what's actually present in the GM's compendiums. */
-export const RARITY_TIERS = ["common", "uncommon", "rare", "veryRare", "legendary", "artifact"];
+export { RARITY_TIERS };
 
 /**
  * dnd5e stores a LOT of non-physical things as "Item" documents too —
@@ -39,6 +22,17 @@ function isPhysicalItemEntry(entry) {
   return true;
 }
 
+/**
+ * A physical item only counts as *loot* (for the browsable search list
+ * and the compendium pack counts) if it has an actual rarity set —
+ * mundane gear (plain rope, a regular dagger, a backpack) is physically
+ * an "Item" document in dnd5e but isn't the kind of find these tabs are
+ * for, so it's excluded rather than showing up as "mundane" loot.
+ */
+function isLootableItemEntry(entry) {
+  return isPhysicalItemEntry(entry) && !!entry.system?.rarity;
+}
+
 /** Finds every Item-type compendium currently active (system + module + world), optionally restricted to a given set of collection IDs. */
 function getItemPacks(collectionIds = null) {
   return game.packs.filter(
@@ -55,8 +49,14 @@ function getItemPacks(collectionIds = null) {
 export async function listItemCompendiums() {
   const results = [];
   for (const pack of getItemPacks()) {
-    const index = await pack.getIndex({ fields: ["type", "system.type.value"] });
-    const physicalCount = index.filter(isPhysicalItemEntry).length;
+    let index;
+    try {
+      index = await pack.getIndex({ fields: ["type", "system.type.value", "system.rarity"] });
+    } catch (err) {
+      console.warn(`Encounter Builder Loot | failed to read index for pack "${pack.collection}", skipping`, err);
+      continue;
+    }
+    const physicalCount = index.filter(isLootableItemEntry).length;
     if (physicalCount === 0) continue;
 
     const { groupKey, groupLabel } = getPackGroupInfo(pack);
@@ -72,22 +72,29 @@ export async function listItemCompendiums() {
 }
 
 /**
- * Loads a lightweight index (name, img, rarity, type) of every
- * PHYSICAL item in every active Item compendium — used for the
- * searchable loot browser. Does NOT load full Item documents until one
- * is actually added to a loot plan.
+ * Loads a lightweight index (name, img, rarity, type) of every LOOTABLE
+ * item (physical AND with a rarity set — see isLootableItemEntry) in
+ * every active Item compendium — used for the searchable loot browser.
+ * Does NOT load full Item documents until one is actually added to a
+ * loot plan.
  */
 export async function loadItemIndex(collectionIds = null) {
   const items = [];
   for (const pack of getItemPacks(collectionIds)) {
-    const index = await pack.getIndex({ fields: ["type", "system.type.value", "system.rarity", "img"] });
+    let index;
+    try {
+      index = await pack.getIndex({ fields: ["type", "system.type.value", "system.rarity", "img"] });
+    } catch (err) {
+      console.warn(`Encounter Builder Loot | failed to read index for pack "${pack.collection}", skipping`, err);
+      continue;
+    }
     for (const entry of index) {
-      if (!isPhysicalItemEntry(entry)) continue;
+      if (!isLootableItemEntry(entry)) continue;
       items.push({
         uuid: `Compendium.${pack.collection}.${entry._id}`,
         name: entry.name,
         img: entry.img,
-        rarity: entry.system?.rarity || "mundane",
+        rarity: entry.system.rarity,
         itemType: entry.type,
         sourcePack: pack.collection,
         sourceLabel: getPackSourceLabel(pack),
@@ -97,16 +104,23 @@ export async function loadItemIndex(collectionIds = null) {
   return items;
 }
 
-/** Unique, sorted rarities actually present in an item index — used to populate the filter dropdown. */
+/** Rarities actually present in an item index, ordered ascending by rarity tier (not alphabetically) — used to populate the filter dropdown. */
 export function getAvailableRarities(itemIndex) {
-  return [...new Set(itemIndex.map((i) => i.rarity))].sort();
+  const present = new Set(itemIndex.map((i) => i.rarity));
+  return RARITY_TIERS.filter((rarity) => present.has(rarity));
 }
 
 /** Finds every physical item of a given rarity across the given (or all) Item compendiums (name/img/uuid only, for random picking). */
 async function getCandidatesForRarity(rarity, collectionIds = null) {
   const candidates = [];
   for (const pack of getItemPacks(collectionIds)) {
-    const index = await pack.getIndex({ fields: ["type", "system.type.value", "system.rarity", "img"] });
+    let index;
+    try {
+      index = await pack.getIndex({ fields: ["type", "system.type.value", "system.rarity", "img"] });
+    } catch (err) {
+      console.warn(`Encounter Builder Loot | failed to read index for pack "${pack.collection}", skipping`, err);
+      continue;
+    }
     for (const entry of index) {
       if (isPhysicalItemEntry(entry) && entry.system?.rarity === rarity) {
         candidates.push({ uuid: `Compendium.${pack.collection}.${entry._id}`, name: entry.name, img: entry.img });
@@ -187,6 +201,31 @@ export async function suggestLootPlan(cr, collectionIds = null) {
 }
 
 /**
+ * Homebrew, per-character-level alternative to suggestLootPlan() — see
+ * smoothed-loot-tables.js for the interpolation methodology and why it's
+ * not RAW. Returns the same plan shape as suggestLootPlan() so the rest
+ * of the app (rerollMagicItems, createLootActor, the template) doesn't
+ * need to know or care which system produced it.
+ */
+export async function suggestSmoothedLootPlan(level, collectionIds = null) {
+  const hoard = generateSmoothedHoard(level);
+  const items = await resolveMagicItems(hoard.rarityCounts, collectionIds);
+
+  return {
+    tier: `Level ${hoard.level}`,
+    confidence: hoard.confidence,
+    coins: hoard.coins,
+    gemsOrArt: {
+      type: hoard.gemsOrArt.type === "none" ? "none" : "gems",
+      count: hoard.gemsOrArt.count ?? 0,
+      unitValue: hoard.gemsOrArt.unitValue ?? 0,
+    },
+    rarityCounts: hoard.rarityCounts,
+    items,
+  };
+}
+
+/**
  * Re-rolls just the magic items using the CURRENT rarityCounts on the
  * plan (which the GM may have hand-edited since the initial roll),
  * replacing only the previously auto-rolled entries — anything added
@@ -206,17 +245,19 @@ export async function rerollMagicItems(plan, collectionIds = null) {
  * critically — is never added to any Combat encounter, since it
  * doesn't fight.
  *
- * @param {object} plan - shape returned by suggestLootPlan(), optionally edited
- * @param {number} representativeCR - only used for the Actor's display name
+ * @param {object} plan - shape returned by suggestLootPlan() (or an
+ *   equivalent {coins, gemsOrArt, items} shape from another loot source),
+ *   optionally edited
+ * @param {string} actorName - display name for the created Actor
  */
-export async function createLootActor(plan, representativeCR) {
+export async function createLootActor(plan, actorName) {
   try {
     const folder =
       game.folders.find((f) => f.type === "Actor" && f.name === "Encounter Builder Loot") ??
       (await Folder.create({ name: "Encounter Builder Loot", type: "Actor" }));
 
     const actor = await Actor.create({
-      name: `Treasure Hoard (CR ${representativeCR})`,
+      name: actorName,
       type: "npc",
       img: "icons/containers/chest/chest-worn-oak-tan.webp",
       folder: folder.id,

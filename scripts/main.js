@@ -1,4 +1,5 @@
 import { EncounterBuilderApp } from "./encounter-builder-app.js";
+import { humanizeToken } from "./format.js";
 
 let appInstance = null;
 
@@ -9,6 +10,29 @@ function openEncounterBuilder() {
 
 Hooks.once("init", () => {
   console.log("Encounter Builder (2024 Rules) | Initializing");
+
+  // Display-only formatting for raw system keys (rarity tiers, creature
+  // types/subtypes, habitats) — e.g. "veryRare" -> "Very Rare",
+  // "undead" -> "Undead". Filter values/option[value] stay the raw key;
+  // only what's shown to the GM goes through this.
+  Handlebars.registerHelper("humanize", humanizeToken);
+
+  // Client-scoped (not world) so each GM keeps their own compendium
+  // selection instead of overwriting each other's — stores only the
+  // DISABLED collection ids, so any compendium added later (new module,
+  // new pack) defaults to enabled without needing a migration.
+  game.settings.register("encounter-builder-2024", "disabledMonsterCompendiums", {
+    scope: "client",
+    config: false,
+    type: Array,
+    default: [],
+  });
+  game.settings.register("encounter-builder-2024", "disabledLootCompendiums", {
+    scope: "client",
+    config: false,
+    type: Array,
+    default: [],
+  });
 });
 
 // Adds a button to the Combat sidebar tab, next to the existing controls.

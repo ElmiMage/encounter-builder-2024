@@ -1,34 +1,64 @@
 /**
  * Treasure Hoard tables, 2024 DMG.
  *
- * CONFIDENCE NOTE: Challenge 0-4 and 5-10 coin formulas + gem/art/magic-item
- * distributions are cross-verified against multiple independent sources.
- * Challenge 11-16 and 17+ are marked "approximate" — community sources
- * disagree on exact dice (there's a documented misprint/errata dispute
- * for the 11-16 gold formula), so those two tiers should be spot-checked
- * against your own book before relying on them for anything high-stakes.
+ * CONFIDENCE NOTE (updated after research, 2026-07): coin formulas for
+ * all four tiers — including 11-16 and 17+, previously flagged
+ * "approximate" here over a rumored errata dispute — were cross-checked
+ * against two independently maintained community references and match
+ * exactly (4d6x1000 gp / 5d6x100 pp for 11-16; 12d6x1000 gp / 8d6x1000
+ * pp for 17+). The "8d8x1000 vs x10000" errata some threads mention
+ * turned out to be about a *different*, newer 2024 DMG table (the
+ * simplified "Random Treasure Hoard" summary table, p.121) — not the
+ * detailed per-tier table implemented here — so it doesn't apply to
+ * these formulas. All four tiers' coin math is now treated as confirmed.
  *
- * The gems/art/magic-item table below is restructured as weighted bands
- * rather than a literal d100 row-by-row copy of the book, which is easier
- * to maintain and test while preserving the same probabilities.
+ * Still an approximation: the gems/art/magic-item table below is
+ * restructured as weighted bands rather than a literal d100 row-by-row
+ * copy of the book (easier to maintain/test while preserving the same
+ * probabilities), and it only produces Magic Item Table letters A-G.
+ * The real 11-16 and 17+ hoard tables also roll on Tables H and I (the
+ * rarest slice, ~15-20% of the d100 range at those tiers) — this model
+ * folds that slice into G/legendary instead, so very-high-CR hoards may
+ * under-represent the single rarest magic-item band slightly.
  */
 
-const COIN_FORMULAS = {
+export const COIN_FORMULAS = {
   "0-4": { cp: [6, 6, 100], sp: [3, 6, 100], gp: [2, 6, 10], pp: null },
   "5-10": { cp: [2, 6, 100], sp: [2, 6, 1000], gp: [6, 6, 100], pp: [3, 6, 10] },
-  // Approximate — see confidence note above.
   "11-16": { cp: null, sp: null, gp: [4, 6, 1000], pp: [5, 6, 100] },
   "17+": { cp: null, sp: null, gp: [12, 6, 1000], pp: [8, 6, 1000] },
 };
 
-const CONFIRMED_TIERS = new Set(["0-4", "5-10"]);
+const CONFIRMED_TIERS = new Set(["0-4", "5-10", "11-16", "17+"]);
+
+/** Fixed rarity tiers used throughout the loot system. Lives here (not loot-generator.js) so smoothed-loot-tables.js can use it too without a circular import. */
+export const RARITY_TIERS = ["common", "uncommon", "rare", "veryRare", "legendary", "artifact"];
+
+/**
+ * Simplified mapping from DMG Magic Item Table letter to a dnd5e item
+ * rarity. The real tables mix specific item types with sub-weightings
+ * per rarity; this collapses each letter to its dominant rarity so
+ * loot-generator.js can pull a real, correctly-built item from the GM's
+ * own compendiums instead of maintaining a separate hardcoded item list.
+ * Lives here (not in loot-generator.js) so smoothed-loot-tables.js can
+ * use it too without a circular import between the two.
+ */
+export const MAGIC_TABLE_TO_RARITY = {
+  A: "common",
+  B: "uncommon",
+  C: "uncommon",
+  D: "rare",
+  E: "rare",
+  F: "veryRare",
+  G: "legendary",
+};
 
 /**
  * Gems/art/magic-item bands per tier. Each band's `weight` values in a
  * tier should sum to 100 (they represent percentage chance, matching a
  * d100 roll landing in that band).
  */
-const TREASURE_BANDS = {
+export const TREASURE_BANDS = {
   "0-4": [
     { weight: 6, type: "none" },
     { weight: 10, type: "gems", dice: [2, 6], unitValue: 10 },
@@ -69,7 +99,9 @@ const TREASURE_BANDS = {
     { weight: 2, type: "art", dice: [2, 4], unitValue: 250, magicTable: "G", magicRolls: [1, 1] },
     { weight: 1, type: "gems", dice: [3, 6], unitValue: 100, magicTable: "G", magicRolls: [1, 1] },
   ],
-  // Approximate — see confidence note above. Weighted toward higher-value
+  // Restructured/approximate band model — see confidence note above
+  // (coin formulas for this tier are confirmed; this gems/magic-item
+  // band shape is not a literal d100 copy). Weighted toward higher-value
   // gems/art and rarer magic items, matching the tier's general intent.
   "11-16": [
     { weight: 3, type: "none" },
@@ -104,7 +136,7 @@ export function getTierForCR(cr) {
   return "17+";
 }
 
-function rollDice(count, sides, rng) {
+export function rollDice(count, sides, rng) {
   let total = 0;
   for (let i = 0; i < count; i++) total += Math.floor(rng() * sides) + 1;
   return total;
