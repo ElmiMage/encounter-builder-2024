@@ -19,7 +19,20 @@ with a fully editable preview before creating anything.
   once when the app opens, never silently overwritten mid-session
 - Auto-Fill Remaining (randomized variety + repeat cap, respects every
   active filter) and Boss Encounter mode (one strong creature + supporting
-  adds)
+  adds — targets the full budget instead of leaving a chunk unspent when
+  there's no room left for adds)
+- **Boss-ify**: mark any monster (auto-picked or added by hand) as the
+  boss, then scale its HP, damage, AC, and ability scores up by a chosen
+  tier — RAW / Moderate / High / Deadly — so a single boss can actually
+  threaten a full party. Fully reversible per-monster
+- **Minion**: convert any monster to MCDM-style Minion stats (*Flee,
+  Mortals!*) — fixed low HP and fixed, non-random damage per hit, at a
+  fraction of its normal XP cost — for fast, disposable group fights.
+  Also reversible
+- **Encounter HP** mode (RAW / Average / Maxroll) controls how every
+  monster's HP is set when placed, independent of Boss-ify/Minion
+- In-app **Help** button (next to the tabs) explains every button and
+  field in plain language
 - Lair Actions: monsters that have them get a per-encounter "Lair" toggle,
   adjusting their XP to CR+1 for budget purposes — matches the 2024/2025
   Monster Manual's fix for a 2014-era oversight where lair-fighting
@@ -75,12 +88,15 @@ with a fully editable preview before creating anything.
 ## Status
 
 Actively developed. See `module.json` for the compatibility range
-(V12 minimum, tested against V13). Canvas-dependent code
-(`canvas-picker.js`, parts of `loot-generator.js`) can't be unit-tested
-outside a live Foundry session — everything else (all `scripts/*.js` pure
-logic, including the treasure/loot tables and the smoothed-level math) has
-been checked with plain Node, and probability/gating claims are verified
-with simulated rolls before being called done.
+(V12 minimum, tested against V13). Foundry-dependent code (canvas
+placement, Actor/Item creation and mutation, the Boss-ify dialog app)
+can't be unit-tested outside a live Foundry session — everything else (all
+pure-logic `scripts/*.js` files, including the treasure/loot tables, the
+smoothed-level math, and the Boss-ify/Minion-ify stat math) has been
+checked with plain Node, and probability/gating claims are verified with
+simulated rolls before being called done. The Minion stat table is
+transcribed from MCDM's *Flee, Mortals!*; Boss-ify's tier percentages are
+an original house rule, not sourced from any book.
 
 ## Support
 

@@ -1,0 +1,57 @@
+<div class="bossify-dialog">
+  <p>
+    <strong>{{monsterName}}</strong>
+  </p>
+
+  <div class="bossify-difficulty">
+    <span>Boss-ify Tier:</span>
+    {{#each tierOptions}}
+      <button type="button" data-action="setTier" data-tier="{{this.value}}" class="{{#if this.selected}}active{{/if}}">{{this.label}}</button>
+    {{/each}}
+  </div>
+
+  <table class="bossify-preview">
+    <thead>
+      <tr><th></th><th>Change</th><th>Apply?</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Armor Class</td>
+        <td>{{#if (gt acDelta 0)}}+{{/if}}{{acDelta}}</td>
+        <td><input type="checkbox" name="applyAC" {{#if applyAC}}checked{{/if}} /></td>
+      </tr>
+      <tr>
+        <td>Hit Points</td>
+        <td>
+          {{#if hpKnown}}
+            {{hpCurrent}} → {{hpNew}}
+          {{else}}
+            ({{damagePercent}}% — actual creature stats not loaded)
+          {{/if}}
+        </td>
+        <td><input type="checkbox" name="applyHP" {{#if applyHP}}checked{{/if}} /></td>
+      </tr>
+      <tr>
+        <td>Ability Scores</td>
+        <td>{{#if (gt abilityScoreDelta 0)}}+{{/if}}{{abilityScoreDelta}}</td>
+        <td><input type="checkbox" name="applyAbilities" {{#if applyAbilities}}checked{{/if}} /></td>
+      </tr>
+      <tr>
+        <td>Damage Dice</td>
+        <td>{{damagePercent}}%</td>
+        <td><input type="checkbox" name="applyDamageDice" {{#if applyDamageDice}}checked{{/if}} /></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p class="bossify-hint">
+    HP and damage dice scale by the tier's percentage; AC and ability scores
+    get a small flat bonus instead (scaling those by the same percentage
+    would produce impossible values at higher tiers).
+  </p>
+
+  <div class="bossify-buttons">
+    <button type="button" data-action="apply">Apply</button>
+    <button type="button" data-action="cancel">Cancel</button>
+  </div>
+</div>

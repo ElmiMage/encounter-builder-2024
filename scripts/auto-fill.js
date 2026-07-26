@@ -101,7 +101,10 @@ export function autoFillEncounter(budget, desiredCount, candidates, creatureType
  *
  * @param {number} bossShare - fraction of the budget the boss should
  *   target (0-1). 0.75 means the boss alone should eat roughly 3/4 of
- *   the total XP budget, leaving 1/4 for supporting creatures.
+ *   the total XP budget, leaving 1/4 for supporting creatures. Ignored
+ *   (treated as 1) when desiredCount <= 1 — with no slots left for adds,
+ *   the boss should target the entire budget instead of leaving a chunk
+ *   of it unspent.
  */
 export function autoFillBossEncounter(
   budget,
@@ -118,7 +121,11 @@ export function autoFillBossEncounter(
       warning: "No candidate monsters match the current filters (or none have a known XP value)." };
   }
 
-  const bossTarget = budget * bossShare;
+  // With no room for supporting adds, the boss should target the WHOLE
+  // budget instead of the usual 75% share — otherwise a 1-creature boss
+  // fight would always leave ~25% of the budget unspent for no reason.
+  const effectiveBossShare = desiredCount <= 1 ? 1 : bossShare;
+  const bossTarget = budget * effectiveBossShare;
 
   // Prefer a boss that doesn't blow the WHOLE budget by itself; only if
   // every candidate is more expensive than the total budget do we fall

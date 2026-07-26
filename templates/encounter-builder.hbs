@@ -5,6 +5,7 @@
     <button type="button" class="eb-tab-button" data-action="switchTab" data-tab="encounter">Encounter</button>
     <button type="button" class="eb-tab-button" data-action="switchTab" data-tab="loot">Loot</button>
     <button type="button" class="eb-tab-button" data-action="switchTab" data-tab="hoard">Treasure Hoard</button>
+    <button type="button" class="eb-help-btn square-btn" data-action="showHelp" title="What do these buttons do?">?</button>
   </nav>
 
   <section class="party-config">
@@ -148,6 +149,14 @@
     <section class="encounter-list">
       <h3 class="encounter-header">
         <span>Encounter</span>
+        <label class="encounter-hp-multiplier" title="Determines every monster's HP in this encounter when Create Combat runs. Independent of Boss-ify.">
+          Encounter HP:
+          <select name="encounterHpMode">
+            <option value="raw" {{#if (eq encounterHpMode "raw")}}selected{{/if}}>RAW (printed)</option>
+            <option value="average" {{#if (eq encounterHpMode "average")}}selected{{/if}}>Average</option>
+            <option value="maxroll" {{#if (eq encounterHpMode "maxroll")}}selected{{/if}}>Maxroll</option>
+          </select>
+        </label>
         <button type="button" class="delete-btn square-btn" data-action="reset" title="Clear all">×</button>
       </h3>
       <ul>
@@ -159,6 +168,25 @@
                 <label class="lair-toggle" title="Fighting in its own lair — adjusts XP to CR+1, matching the 2024/2025 Monster Manual's lair-action fix">
                   <input type="checkbox" data-action="toggleLair" data-uuid="{{this.monster.uuid}}" {{#if this.inLair}}checked{{/if}} /> Lair
                 </label>
+              {{/if}}
+              {{#if ../bossMode}}
+                <label class="boss-toggle" title="Mark this monster as the encounter's boss — enables Boss-ify scaling for it, whether it came from Auto-Fill or was added manually">
+                  <input type="checkbox" data-action="toggleBoss" data-uuid="{{this.monster.uuid}}" {{#if this.isBoss}}checked{{/if}} /> Boss
+                </label>
+              {{/if}}
+              {{#if this.isBoss}}
+                <button type="button" data-action="openBossifyDialog" data-uuid="{{this.monster.uuid}}" title="Preview and choose a difficulty tier to scale this boss's HP, damage, AC and ability scores">
+                  Boss-ify{{#if this.bossifyTier}} ({{humanize this.bossifyTier}}){{/if}}…
+                </button>
+                {{#if this.bossifiedActorId}}
+                  <button type="button" data-action="revertBossify" data-actor-id="{{this.bossifiedActorId}}" title="Restore this boss's original stats">Revert</button>
+                {{/if}}
+              {{/if}}
+              <label class="minion-toggle" title="Convert to MCDM Minion stats (Flee, Mortals!) at Create Combat — fixed low HP and flat damage per hit for this CR, no AC/attack changes">
+                <input type="checkbox" data-action="toggleMinionify" data-uuid="{{this.monster.uuid}}" {{#if this.minionify}}checked{{/if}} /> Minion
+              </label>
+              {{#if this.minionifiedActorId}}
+                <button type="button" data-action="revertMinionify" data-actor-id="{{this.minionifiedActorId}}" title="Restore this monster's original stats">Revert</button>
               {{/if}}
               <button type="button" data-action="removeMonster" data-uuid="{{this.monster.uuid}}">−</button>
               <button type="button" data-action="addMonster" data-uuid="{{this.monster.uuid}}">+</button>

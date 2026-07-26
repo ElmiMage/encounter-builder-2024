@@ -6,7 +6,10 @@ import { autoFillEncounter, autoFillBossEncounter } from "./auto-fill.js";
 import { pickCanvasPoint } from "./canvas-picker.js";
 import { createLootActor, suggestLootPlan, suggestSmoothedLootPlan, rerollMagicItems, listItemCompendiums, loadItemIndex, getAvailableRarities, RARITY_TIERS } from "./loot-generator.js";
 import { rollIndividualTreasureForEncounter } from "./individual-treasure-tables.js";
-import { humanizeToken } from "./format.js";
+import { humanizeToken, formatCR } from "./format.js";
+import { bossifyActor, revertBossify, minionifyActor, revertMinionify, scaleEncounterHp } from "./monster-scaling.js";
+import { BossifyDialog } from "./bossify-dialog.js";
+import { MINION_XP_MULTIPLIER } from "./minion-scaling.js";
 
 const { HandlebarsApplicationMixin, ApplicationV2 } = foundry.applications.api;
 
@@ -21,6 +24,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     },
     position: { width: 960, height: 780 },
     actions: {
+      showHelp: EncounterBuilderApp.#onShowHelp,
       syncParty: EncounterBuilderApp.#onSyncParty,
       toggleCompendium: EncounterBuilderApp.#onToggleCompendium,
       toggleCompendiumGroup: EncounterBuilderApp.#onToggleCompendiumGroup,
@@ -29,6 +33,11 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       removeMonster: EncounterBuilderApp.#onRemoveMonster,
       deleteMonster: EncounterBuilderApp.#onDeleteMonster,
       toggleLair: EncounterBuilderApp.#onToggleLair,
+      toggleBoss: EncounterBuilderApp.#onToggleBoss,
+      openBossifyDialog: EncounterBuilderApp.#onOpenBossifyDialog,
+      revertBossify: EncounterBuilderApp.#onRevertBossify,
+      toggleMinionify: EncounterBuilderApp.#onToggleMinionify,
+      revertMinionify: EncounterBuilderApp.#onRevertMinionify,
       createCombat: EncounterBuilderApp.#onCreateCombat,
       autoFill: EncounterBuilderApp.#onAutoFill,
       reset: EncounterBuilderApp.#onReset,
@@ -56,6 +65,9 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   monsterIndex = [];
   /** @type {Map<string, {monster:object, count:number}>} keyed by uuid */
   encounter = new Map();
+
+  /** How every monster's HP in the encounter is determined at Create Combat time: "raw" (printed stat block, no change), "average", or "maxroll". Independent of Boss-ify — see scaleEncounterHp() in monster-scaling.js. */
+  encounterHpMode = "raw";
 
   partyLevel = 4;
   partySize = 4;
@@ -113,14 +125,6 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   /** @type {{coins:{cp:number,sp:number,ep:number,gp:number,pp:number}, rolledCount:number}|null} last Individual Treasure roll for the "loot" tab */
   individualTreasureResult = null;
 
-  /** Formats a numeric CR the way D&D usually displays it (fractions below 1). */
-  #formatCR(cr) {
-    if (cr === 0.125) return "1/8";
-    if (cr === 0.25) return "1/4";
-    if (cr === 0.5) return "1/2";
-    return String(cr);
-  }
-
   /** Checks the 5 dropdown-based filters, optionally skipping one — used to compute cascading dropdown options (e.g. Subtype should only list values that still exist given the current Type/Size/CR/Habitat selection). */
   #matchesSelectFilters(m, excludeKey) {
     const checks = {
@@ -150,16 +154,27 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   }
 
   /**
-   * XP to use for budget-spending purposes for one encounter entry — the
-   * monster's normal XP, or the CR+1 value if the GM has marked it as
-   * fighting in its own lair (only meaningful for monsters that actually
-   * have lair actions per hasLairActions). Matches the 2024/2025 Monster
-   * Manual's own fix for a 2014-MM oversight, where lair-fighting
-   * monsters didn't get any XP bump at all — verified against the dnd5e
-   * system source (system.resources.lair.value/.inside), which computes
-   * the same CR+1 adjustment internally on a fully-loaded Actor.
+   * XP to use for budget-spending purposes for one encounter entry.
+   * Minion-ify checked first: a minion-ified copy counts as only
+   * MINION_XP_MULTIPLIER of its normal XP (see minion-scaling.js — MCDM's
+   * table has no XP value at all, this is a Hausregel reflecting how much
+   * weaker a single minion is), overriding the lair adjustment below since
+   * a minion-ified monster's lair-action XP bump wouldn't make sense at
+   * its now-trivial combat weight.
+   *
+   * Otherwise: the monster's normal XP, or the CR+1 value if the GM has
+   * marked it as fighting in its own lair (only meaningful for monsters
+   * that actually have lair actions per hasLairActions). Matches the
+   * 2024/2025 Monster Manual's own fix for a 2014-MM oversight, where
+   * lair-fighting monsters didn't get any XP bump at all — verified
+   * against the dnd5e system source (system.resources.lair.value/.inside),
+   * which computes the same CR+1 adjustment internally on a fully-loaded
+   * Actor.
    */
   #getEffectiveXp(entry) {
+    if (entry.minionify) {
+      return Math.round((entry.monster.xp ?? 0) * MINION_XP_MULTIPLIER);
+    }
     if (entry.inLair && entry.monster.hasLairActions && entry.monster.cr != null) {
       return xpForChallengeRating(entry.monster.cr + 1) ?? entry.monster.xp ?? 0;
     }
@@ -276,7 +291,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     const creatureTypes = getAvailableCreatureTypes(this.#getMonstersExcluding("type"));
     const availableCrs = [...new Set(this.#getMonstersExcluding("cr").map((m) => m.cr))]
       .sort((a, b) => a - b)
-      .map((cr) => ({ value: String(cr), label: this.#formatCR(cr) }));
+      .map((cr) => ({ value: String(cr), label: formatCR(cr) }));
     const availableSizes = getAvailableSizes(this.#getMonstersExcluding("size"));
     const availableSubtypes = getAvailableSubtypes(this.#getMonstersExcluding("subtype"));
     const availableHabitats = getAvailableHabitats(this.#getMonstersExcluding("habitat"));
@@ -349,7 +364,27 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       })),
       compendiumTreeOpen: this.compendiumTreeOpen,
       monsters: filtered,
-      encounterEntries: [...this.encounter.values()].map((e) => ({ ...e, effectiveXp: this.#getEffectiveXp(e) })),
+      encounterHpMode: this.encounterHpMode,
+      encounterEntries: [...this.encounter.values()].map((e) => {
+        // Find the world Actor already spawned from this compendium monster
+        // (if Create Combat has been run before) so the template can show a
+        // Revert button once it carries the matching snapshot flag. Scoped
+        // to the entry's current isBoss/minionify status — the reuse-lookup
+        // in #onCreateCombat already refuses to hand a stray boss-ified or
+        // minion-ified Actor to an entry that isn't currently configured
+        // that way (always creates a fresh one instead), so an entry that
+        // isn't currently marked never needs reverting.
+        const worldActor =
+          e.isBoss || e.minionify
+            ? game.actors.find((a) => a.getFlag("encounter-builder-2024", "sourceUuid") === e.monster.uuid)
+            : null;
+        return {
+          ...e,
+          effectiveXp: this.#getEffectiveXp(e),
+          bossifiedActorId: e.isBoss && worldActor?.getFlag("encounter-builder-2024", "bossifySnapshot") ? worldActor.id : null,
+          minionifiedActorId: e.minionify && worldActor?.getFlag("encounter-builder-2024", "minionifySnapshot") ? worldActor.id : null,
+        };
+      }),
       budget,
       spend,
       // For the progress bar: clamp visually at 100% even if over budget
@@ -503,6 +538,10 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       this.render();
     });
 
+    this.element.querySelector('[name="encounterHpMode"]')?.addEventListener("change", (ev) => {
+      this.encounterHpMode = ev.target.value;
+    });
+
     // --- Loot tab ---
     for (const el of this.element.querySelectorAll(".eb-tab-button")) {
       el.classList.toggle("active", el.dataset.tab === this.activeTab);
@@ -573,6 +612,39 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       if (el) el.scrollTop = top;
       this._pendingScrollRestore = null;
     }
+  }
+
+  /** Opens a static, plain-language help dialog explaining what each button/field on the Encounter/Loot/Treasure Hoard tabs actually does — user-facing, no implementation detail. */
+  static #onShowHelp(event, target) {
+    foundry.applications.api.DialogV2.wait({
+      window: { title: "Encounter Builder — Help", icon: "fa-solid fa-circle-question" },
+      position: { width: 520 },
+      content: `
+        <div class="eb-help">
+          <h3>Party &amp; Budget</h3>
+          <p><strong>Party Level / Party Size / Difficulty</strong> set how much total XP this encounter is allowed to spend. <strong>Sync from Party</strong> fills Level and Size in automatically from your world's Party.</p>
+
+          <h3>Building the Encounter</h3>
+          <p>Pick which compendiums to draw from, filter the monster list, and click <strong>+</strong> to add monsters — or use <strong>Auto-Fill Remaining</strong> to fill the rest of the budget automatically with matching monsters.</p>
+          <p><strong>Boss Encounter</strong>: when checked, Auto-Fill spends most of the budget on one strong "boss" creature and the rest on a few supporting monsters, instead of spreading it evenly.</p>
+          <p><strong>Boss</strong> (checkbox on an entry): marks that monster as the boss, whether Auto-Fill picked it or you added it yourself. Only one monster can be the boss at a time.</p>
+          <p><strong>Boss-ify…</strong>: opens a dialog to make the boss tougher. Pick RAW (no change), Moderate, High, or Deadly — this scales the boss's HP and damage up (with a small boost to AC and ability scores too), so a single boss can actually threaten a whole party.</p>
+          <p><strong>Minion</strong>: turns a monster into a fragile "minion" with fixed low HP and fixed damage (no rolling) — great for fast, disposable group fights. Costs much less of the XP budget, so a crowd of them is affordable.</p>
+          <p><strong>Lair</strong>: marks a monster as fighting in its own lair, correctly increasing its XP cost per the 2024 rules (only shown for monsters that actually have lair actions).</p>
+          <p><strong>Encounter HP</strong>: choose how every monster's HP is set when placed — RAW (as printed), Average, or Maxroll (always the highest possible roll).</p>
+          <p><strong>Create Combat</strong>: places tokens on the map and starts a Combat with everything currently in the list.</p>
+          <p><strong>Revert</strong> (shows up once Boss-ify/Minion-ify has been applied): restores that specific monster's original stats.</p>
+
+          <h3>Loot</h3>
+          <p>Rolls <strong>Individual Treasure</strong> — the coins and small items each creature in the encounter is carrying.</p>
+
+          <h3>Treasure Hoard</h3>
+          <p>Rolls a full treasure hoard (coins, gems/art, and magic items) appropriate for the party's level or a chosen CR.</p>
+        </div>
+      `,
+      rejectClose: false,
+      buttons: [{ action: "ok", label: "Close", default: true }],
+    });
   }
 
   static #onSyncParty(event, target) {
@@ -655,6 +727,84 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   }
 
   /**
+   * Clears isBoss AND any Boss-ify configuration (tier + apply* flags) on
+   * every encounter entry except `keep` — the single source of truth for
+   * "only one entry is ever the boss." Used by both #onToggleBoss and
+   * #onAutoFill so a monster that loses boss status can never keep a stale
+   * bossifyTier around: previously only `isBoss` was cleared on the losing
+   * entry, leaving its old tier in place — harmless on its own (Create
+   * Combat gates on isBoss too), but fragile, and confusing if that entry
+   * ever became the boss again without an explicit re-configure.
+   */
+  static #clearBossifyExcept(encounter, keep) {
+    for (const other of encounter.values()) {
+      if (other === keep) continue;
+      other.isBoss = false;
+      other.bossifyTier = null;
+    }
+  }
+
+  /**
+   * Marks/unmarks an encounter entry as the boss — shown for every entry
+   * whenever Boss Mode is on, not just the one Auto-Fill happened to pick,
+   * so a manually-added monster can become the boss too. Only one entry can
+   * be the boss at a time: marking a new one un-marks whichever entry had
+   * it before (and clears that entry's Boss-ify tier too, see
+   * #clearBossifyExcept). Boss and Minion are mutually exclusive on the
+   * SAME entry too — becoming the boss clears that entry's minionify flag
+   * (see #onToggleMinionify for the reverse direction).
+   */
+  static #onToggleBoss(event, target) {
+    const entry = this.encounter.get(target.dataset.uuid);
+    if (!entry) return;
+    const makingBoss = !entry.isBoss;
+
+    EncounterBuilderApp.#clearBossifyExcept(this.encounter, entry);
+
+    entry.isBoss = makingBoss;
+    if (!makingBoss) entry.bossifyTier = null;
+    else entry.minionify = false; // Boss and Minion are mutually exclusive
+    this.render();
+  }
+
+  /** Opens the Boss-ify preview dialog for this encounter entry — only shown for the entry currently marked isBoss (set by #onAutoFill or manually via #onToggleBoss). The dialog writes its chosen settings (bossifyTier + apply* flags) back onto the entry itself and re-renders this app when closed via Apply. */
+  static #onOpenBossifyDialog(event, target) {
+    const entry = this.encounter.get(target.dataset.uuid);
+    if (!entry) return;
+    new BossifyDialog(entry, this).render({ force: true });
+  }
+
+  /** Reverts a previously Boss-ified world Actor to its pre-scaling stats via its bossifySnapshot flag, then re-renders so the Revert button disappears. */
+  static async #onRevertBossify(event, target) {
+    const actor = game.actors.get(target.dataset.actorId);
+    if (!actor) return;
+    await revertBossify(actor);
+    this.render();
+  }
+
+  /** Marks/unmarks an encounter entry for Minion-ify — unlike Boss, not exclusive ACROSS entries: any number of entries can be minions at once. It IS mutually exclusive with Boss status on the SAME entry though — a monster can't be both, so marking it a minion steps it down from boss if it currently is one. Applied at Create Combat, like Boss-ify. */
+  static #onToggleMinionify(event, target) {
+    const entry = this.encounter.get(target.dataset.uuid);
+    if (!entry) return;
+    entry.minionify = target.checked;
+    if (entry.minionify && entry.isBoss) {
+      // Boss and Minion are mutually exclusive — becoming a minion steps
+      // this entry down from boss status.
+      entry.isBoss = false;
+      entry.bossifyTier = null;
+    }
+    this.render();
+  }
+
+  /** Reverts a previously Minion-ified world Actor to its pre-scaling stats via its minionifySnapshot flag. */
+  static async #onRevertMinionify(event, target) {
+    const actor = game.actors.get(target.dataset.actorId);
+    if (!actor) return;
+    await revertMinionify(actor);
+    this.render();
+  }
+
+  /**
    * Fills the REMAINING budget and slot count with auto-selected
    * monsters, without touching what's already been picked manually or
    * from a previous Auto-Fill click. Repeated clicks keep adding on top
@@ -684,9 +834,25 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       ? autoFillBossEncounter(budget - alreadySpent, remainingSlots, pool, null)
       : autoFillEncounter(budget - alreadySpent, remainingSlots, pool, null);
     for (const entry of result.entries) {
+      if (result.bossUuid && entry.monster.uuid === result.bossUuid) {
+        entry.isBoss = true;
+        entry.bossifyTier = null;
+        // Auto-Fill's pick always wins — un-mark (and un-configure) any
+        // entry the GM had marked/boss-ified before, so only one boss ever
+        // exists and none of the others keep a stale tier around (see
+        // #clearBossifyExcept).
+        EncounterBuilderApp.#clearBossifyExcept(this.encounter, entry);
+      }
       const existing = this.encounter.get(entry.monster.uuid);
-      if (existing) existing.count += entry.count;
-      else this.encounter.set(entry.monster.uuid, entry);
+      if (existing) {
+        existing.count += entry.count;
+        if (entry.isBoss) {
+          existing.isBoss = true;
+          existing.bossifyTier ??= null;
+        }
+      } else {
+        this.encounter.set(entry.monster.uuid, entry);
+      }
     }
     this.autoFillWarning = result.warning;
     this.render();
@@ -750,10 +916,22 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     const dropPoint = await pickCanvasPoint(scene);
     try { await this.maximize?.(); } catch (err) { console.warn("Encounter Builder | maximize failed", err); }
 
-    // Flatten { monster, count } into one entry per individual creature,
-    // so the spiral positions map 1:1 onto tokens.
-    const spawnList = [...this.encounter.values()].flatMap(({ monster, count }) =>
-      Array(count).fill(monster)
+    // Flatten { monster, count } into one entry per individual creature, so
+    // the spiral positions map 1:1 onto tokens. Carries isBoss/bossifyTier,
+    // minionify, and the apply* checkboxes along too, since they're needed
+    // once actors are actually spawned below.
+    const spawnList = [...this.encounter.values()].flatMap(
+      ({ monster, count, isBoss, bossifyTier, minionify, applyAC, applyHP, applyAbilities, applyDamageDice }) =>
+        Array(count).fill({
+          monster,
+          isBoss: Boolean(isBoss),
+          bossifyTier: bossifyTier ?? null,
+          minionify: Boolean(minionify),
+          applyAC,
+          applyHP,
+          applyAbilities,
+          applyDamageDice,
+        })
     );
 
     const positions = clampToSceneBounds(
@@ -765,13 +943,29 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     const tokenData = [];
     const failedMonsters = [];
     for (let i = 0; i < spawnList.length; i++) {
-      const monster = spawnList[i];
+      const { monster, isBoss, bossifyTier, minionify, applyAC, applyHP, applyAbilities, applyDamageDice } =
+        spawnList[i];
+      const shouldBossify = isBoss && bossifyTier !== null;
+      const shouldMinionify = minionify;
 
-      // Reuse a previously imported world Actor for this compendium monster
-      // if one already exists, instead of duplicating it every encounter.
-      let worldActor = game.actors.find(
-        (a) => a.getFlag("encounter-builder-2024", "sourceUuid") === monster.uuid
-      );
+      // Boss-ified/Minion-ified entries always get a fresh Actor instead of
+      // reusing a previously-imported one, AND the reuse lookup itself
+      // skips any world Actor still carrying either snapshot flag from an
+      // earlier encounter — otherwise, changing which monster is the boss
+      // (or dropping Boss-ify/Minion-ify entirely) after a previous Create
+      // Combat run could silently reuse that old, already-scaled Actor for
+      // what's now supposed to be a plain, unscaled copy of the same
+      // monster.
+      let worldActor =
+        shouldBossify || shouldMinionify
+          ? null
+          : game.actors.find(
+              (a) =>
+                a.getFlag("encounter-builder-2024", "sourceUuid") === monster.uuid &&
+                !a.getFlag("encounter-builder-2024", "bossifySnapshot") &&
+                !a.getFlag("encounter-builder-2024", "minionifySnapshot")
+            );
+
       if (!worldActor) {
         let sourceActor;
         try {
@@ -787,16 +981,77 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         data.folder = folder.id;
         worldActor = await Actor.create(data);
         await worldActor.setFlag("encounter-builder-2024", "sourceUuid", monster.uuid);
+
+        if (shouldBossify) {
+          try {
+            await bossifyActor(worldActor, bossifyTier, { applyAC, applyHP, applyAbilities, applyDamageDice });
+          } catch (err) {
+            // bossifyActor already reports failures to the user itself —
+            // don't abort the rest of the encounter over one boss-ify error.
+            console.warn(`Encounter Builder | Boss-ify failed for "${worldActor.name}"`, err);
+          }
+        }
+
+        if (shouldMinionify) {
+          try {
+            await minionifyActor(worldActor);
+          } catch (err) {
+            console.warn(`Encounter Builder | Minion-ify failed for "${worldActor.name}"`, err);
+          }
+        }
+
+        // Global HP mode: only for freshly-created, plain (non-Boss/Minion)
+        // actors — Boss-ify and Minion-ify already fully determine HP
+        // themselves, and this would otherwise immediately overwrite their
+        // work with a fresh average/maxroll computed from the ORIGINAL
+        // hp.formula, undoing whatever they just set.
+        if (this.encounterHpMode !== "raw" && !shouldBossify && !shouldMinionify) {
+          try {
+            await scaleEncounterHp(worldActor, this.encounterHpMode);
+          } catch (err) {
+            console.warn(`Encounter Builder | Encounter HP scaling failed for "${worldActor.name}"`, err);
+          }
+        }
       }
 
       const proto = worldActor.prototypeToken.toObject();
       const pos = positions[i];
+
+      // Wildcard token art (texture.src literally "flameskull-*.webp",
+      // randomImg: true) is normally resolved to one real matching file by
+      // Foundry's own Actor#getTokenDocument() — the code path the core
+      // sidebar's drag-and-drop uses. We build tokenData ourselves from the
+      // raw prototypeToken instead (to control x/y/name for the spiral
+      // layout), which skips that resolution entirely, so the literal "*"
+      // path gets used as-is and 404s. Resolve it the same way here.
+      if (proto.randomImg) {
+        try {
+          const images = await worldActor.getTokenImages();
+          if (images.length > 0) proto.texture.src = images[Math.floor(Math.random() * images.length)];
+        } catch (err) {
+          console.warn(`Encounter Builder | wildcard token image resolution failed for "${worldActor.name}"`, err);
+        }
+      }
+
+      // Some compendium monsters ship with a portrait (actor.img) but no
+      // dedicated token art — prototypeToken.texture.src comes back empty
+      // or as Foundry's generic mystery-man placeholder. Fall back to the
+      // actor's portrait so the token isn't blank. This does NOT help if
+      // texture.src points to a specific file that's just missing/broken
+      // (a genuinely missing asset in that compendium's content) — that
+      // case needs fixing at the source, not here.
+      const tokenTexture =
+        !proto.texture?.src || proto.texture.src === "icons/svg/mystery-man.svg"
+          ? { ...proto.texture, src: worldActor.img }
+          : proto.texture;
+
       tokenData.push({
         ...proto,
+        texture: tokenTexture,
         actorId: worldActor.id,
         x: pos.x - (proto.width * gridSize) / 2,
         y: pos.y - (proto.height * gridSize) / 2,
-        name: spawnList.filter((m) => m === monster).length > 1 ? `${monster.name}` : proto.name,
+        name: spawnList.filter((s) => s.monster === monster).length > 1 ? `${monster.name}` : proto.name,
       });
     }
 

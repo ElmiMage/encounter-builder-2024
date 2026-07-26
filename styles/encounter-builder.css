@@ -309,7 +309,9 @@
   min-width: 1.6rem;
 }
 
-.encounter-builder-2024 .lair-toggle {
+.encounter-builder-2024 .lair-toggle,
+.encounter-builder-2024 .boss-toggle,
+.encounter-builder-2024 .minion-toggle {
   display: flex;
   align-items: center;
   gap: 0.2rem;
@@ -351,9 +353,15 @@
 
 .encounter-builder-2024 .eb-tabs {
   display: flex;
+  align-items: center;
   gap: 0.25rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.15);
   margin-bottom: 0.25rem;
+}
+
+.encounter-builder-2024 .eb-help-btn {
+  margin-left: auto;
+  border-radius: 50%;
 }
 
 /* Fully reset instead of layering on top of Foundry's default button look
@@ -457,6 +465,19 @@
   justify-content: space-between;
 }
 
+.encounter-builder-2024 .encounter-hp-multiplier {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8em;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.encounter-builder-2024 .encounter-hp-multiplier select {
+  width: auto;
+}
+
 .encounter-builder-2024 .square-btn {
   min-width: 1.6rem;
   height: 1.6rem;
@@ -522,4 +543,52 @@
   color: #c9a227;
   font-size: 0.7em;
   margin-left: 0.15rem;
+}
+
+/* Boss-ify dialog — separate ApplicationV2 window, not nested under
+   .encounter-builder-2024, so it gets its own small ruleset here rather
+   than relying on the encounter builder's scoped styles above. */
+#encounter-builder-2024-bossify-dialog .bossify-steps,
+#encounter-builder-2024-bossify-dialog .bossify-difficulty {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.5rem 0;
+  flex-wrap: wrap;
+}
+
+#encounter-builder-2024-bossify-dialog .bossify-steps button.active,
+#encounter-builder-2024-bossify-dialog .bossify-difficulty button.active {
+  background: #4a7a4a;
+  color: #fff;
+  font-weight: bold;
+}
+
+#encounter-builder-2024-bossify-dialog .bossify-preview {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+}
+
+#encounter-builder-2024-bossify-dialog .bossify-preview th,
+#encounter-builder-2024-bossify-dialog .bossify-preview td {
+  padding: 0.2rem 0.4rem;
+  text-align: left;
+}
+
+#encounter-builder-2024-bossify-dialog .over-budget {
+  color: #c62828;
+  font-weight: bold;
+  margin-left: 0.5rem;
+}
+
+#encounter-builder-2024-bossify-dialog .bossify-hint {
+  font-size: 0.8em;
+  opacity: 0.8;
+}
+
+#encounter-builder-2024-bossify-dialog .bossify-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
 }
