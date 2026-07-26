@@ -1,0 +1,41 @@
+name: Build release assets
+
+# Builds module.zip from exactly the files Foundry needs to run the module
+# (matches the previously-manual process: module.json, LICENSE, README.md,
+# scripts/, styles/, templates/ — NOT the dev-only docs like CLAUDE.md or
+# ARCHITECTURE.md) and attaches it plus a standalone module.json to a DRAFT
+# GitHub Release for the pushed tag.
+#
+# Deliberately creates a DRAFT, not a published release — the notes here
+# are a placeholder. Writing the real, curated release notes and
+# publishing (gh release edit <tag> --notes "..." --draft=false, or via
+# the GitHub web UI) stays a separate, deliberate step.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build module.zip
+        run: zip -r module.zip module.json LICENSE README.md scripts styles templates
+
+      - name: Create draft release with assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            module.zip \
+            module.json \
+            --title "${{ github.ref_name }}" \
+            --draft \
+            --notes "Draft release for ${{ github.ref_name }} — module.zip and module.json were built automatically from this tag. Replace these notes with the real changelog and publish when ready."

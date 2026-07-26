@@ -85,6 +85,21 @@ with a fully editable preview before creating anything.
 2. Enable it in a world under Settings > Manage Modules
 3. Open the Combat tab — a button labeled "Encounter Builder" appears
 
+## Releasing
+
+1. Bump `version` in `module.json`, commit
+2. Tag and push: `git tag -a vX.Y.Z -m "..."` then `git push origin master --tags`
+3. A GitHub Actions workflow (`.github/workflows/release.yml`) automatically
+   builds `module.zip` (module.json, LICENSE, README.md, scripts/, styles/,
+   templates/ — matches exactly what Foundry needs to run the module) and
+   opens it as a **draft** release with the built assets attached
+4. Write the real release notes and publish: `gh release edit vX.Y.Z --notes "..." --draft=false`
+   (or finish it in the GitHub web UI)
+
+The manifest/download URLs in `module.json` always point at
+`releases/latest`, so publishing the release is what makes Foundry's
+"Update Module" check pick up the new version.
+
 ## Status
 
 Actively developed. See `module.json` for the compatibility range
