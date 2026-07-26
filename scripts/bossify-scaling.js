@@ -16,6 +16,12 @@
  * become 40, both nonsensical/impossible in dnd5e (max ability score is
  * 30). They get a small flat bonus per tier instead, which still cascades
  * into attack bonus/save DC via dnd5e's own ability-modifier derivation.
+ *
+ * These numbers are GM-tunable (2026-07) via a settings-menu editor (see
+ * scaling-settings-app.js) — the constants below are just the shipped
+ * defaults. mergeTierConfig() layers a GM's saved overrides on top of
+ * them; "raw" is never overridden (always 100%/+0/+0 by definition, not
+ * shown in the editor).
  */
 
 export const BOSSIFY_TIERS = {
@@ -28,11 +34,37 @@ export const BOSSIFY_TIERS = {
 export const BOSSIFY_TIER_ORDER = ["raw", "moderate", "high", "deadly"];
 
 /**
+ * Layers a GM-saved override object (from the `bossifyTierConfig` setting —
+ * possibly `{}`, possibly missing fields on a given tier, e.g. from a
+ * partially-filled-in form) on top of the built-in BOSSIFY_TIERS defaults.
+ * `label` is never overridden (it's just the tier's fixed display name, not
+ * a tunable number), and "raw" always stays exactly the default.
+ *
+ * @param {object} [overrides] - e.g. `{ moderate: {percent: 140}, deadly: {percent: 250, acBonus: 4, abilityBonus: 8} }`
+ * @returns {typeof BOSSIFY_TIERS}
+ */
+export function mergeTierConfig(overrides = {}) {
+  const merged = {};
+  for (const key of BOSSIFY_TIER_ORDER) {
+    const base = BOSSIFY_TIERS[key];
+    const override = key === "raw" ? {} : (overrides?.[key] ?? {});
+    merged[key] = {
+      label: base.label,
+      percent: Number.isFinite(override.percent) ? override.percent : base.percent,
+      acBonus: Number.isFinite(override.acBonus) ? override.acBonus : base.acBonus,
+      abilityBonus: Number.isFinite(override.abilityBonus) ? override.abilityBonus : base.abilityBonus,
+    };
+  }
+  return merged;
+}
+
+/**
  * Computes the stat changes for boss-ifying a creature at the given tier,
  * relative to its OWN current stats — no CR or guideline table involved.
  *
  * @param {{hp:{value:number, max:number}}} snapshot
  * @param {"raw"|"moderate"|"high"|"deadly"} tier
+ * @param {typeof BOSSIFY_TIERS} [tierConfig=BOSSIFY_TIERS] - pass a mergeTierConfig() result to honor a GM's custom values instead of the shipped defaults
  * @returns {{
  *   hpMaxDelta: number,
  *   hpValueDelta: number,
@@ -41,8 +73,8 @@ export const BOSSIFY_TIER_ORDER = ["raw", "moderate", "high", "deadly"];
  *   damageRatio: number,
  * }}
  */
-export function computeBossifyScale(snapshot, tier) {
-  const config = BOSSIFY_TIERS[tier] ?? BOSSIFY_TIERS.raw;
+export function computeBossifyScale(snapshot, tier, tierConfig = BOSSIFY_TIERS) {
+  const config = tierConfig[tier] ?? BOSSIFY_TIERS.raw;
   const ratio = config.percent / 100;
 
   const currentMax = snapshot.hp?.max ?? 0;

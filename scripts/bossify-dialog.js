@@ -16,10 +16,11 @@
  * applies it later, at Create Combat.
  */
 
-import { computeBossifyScale, BOSSIFY_TIERS, BOSSIFY_TIER_ORDER } from "./bossify-scaling.js";
+import { computeBossifyScale, mergeTierConfig, BOSSIFY_TIER_ORDER } from "./bossify-scaling.js";
 import { loadFullActor } from "./compendium-browser.js";
 
 const { HandlebarsApplicationMixin, ApplicationV2 } = foundry.applications.api;
+const MODULE_ID = "encounter-builder-2024";
 
 export class BossifyDialog extends HandlebarsApplicationMixin(ApplicationV2) {
   /** Compendium source Actor, fetched lazily/once in _prepareContext for the preview — undefined until first fetch, null if the fetch failed. */
@@ -74,13 +75,15 @@ export class BossifyDialog extends HandlebarsApplicationMixin(ApplicationV2) {
       }
     }
 
+    const tierConfig = mergeTierConfig(game.settings.get(MODULE_ID, "bossifyTierConfig"));
+
     const hp = this.#sourceActor?.system?.attributes?.hp;
     const snapshot = { hp: { value: hp?.value ?? hp?.max ?? 0, max: hp?.max ?? 0 } };
-    const scaled = computeBossifyScale(snapshot, this.tier);
+    const scaled = computeBossifyScale(snapshot, this.tier, tierConfig);
 
     const tierOptions = BOSSIFY_TIER_ORDER.map((key) => ({
       value: key,
-      label: `${BOSSIFY_TIERS[key].label} (${BOSSIFY_TIERS[key].percent}%)`,
+      label: `${tierConfig[key].label} (${tierConfig[key].percent}%)`,
       selected: key === this.tier,
     }));
 
@@ -92,7 +95,7 @@ export class BossifyDialog extends HandlebarsApplicationMixin(ApplicationV2) {
       hpNew: snapshot.hp.max + scaled.hpMaxDelta,
       acDelta: scaled.acDelta,
       abilityScoreDelta: scaled.abilityScoreDelta,
-      damagePercent: BOSSIFY_TIERS[this.tier]?.percent ?? 100,
+      damagePercent: tierConfig[this.tier]?.percent ?? 100,
       applyAC: this.applyAC,
       applyHP: this.applyHP,
       applyAbilities: this.applyAbilities,

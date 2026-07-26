@@ -57,9 +57,23 @@ export const MINION_CR_LADDER = [0, 0.125, 0.25, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9,
  * an XP value at all (minions aren't meant to be budgeted like a normal
  * monster) — this is a pure Hausregel starting point reflecting how much
  * weaker a single minion is (fixed low HP, no damage variance), not a book
- * value. Tune freely.
+ * value. GM-tunable (2026-07) via a settings-menu editor (see
+ * scaling-settings-app.js) as a percentage — this constant is just the
+ * shipped default (10%).
  */
 export const MINION_XP_MULTIPLIER = 0.1;
+
+/**
+ * Resolves the effective Minion XP multiplier from a GM-saved settings
+ * value (stored as a 0-100 percent, e.g. from the settings-menu editor) —
+ * falls back to MINION_XP_MULTIPLIER if the setting is unset/invalid.
+ *
+ * @param {number|undefined} overridePercent - e.g. 15 for "15%"
+ * @returns {number} a 0-1 fraction, same shape as MINION_XP_MULTIPLIER
+ */
+export function resolveMinionXpMultiplier(overridePercent) {
+  return Number.isFinite(overridePercent) ? overridePercent / 100 : MINION_XP_MULTIPLIER;
+}
 
 /** Looks up the Minion stats for a CR, falling back to the nearest known CR (with a warning) above CR 20. */
 export function getMinionStats(cr) {

@@ -592,3 +592,44 @@
   gap: 0.5rem;
   margin-top: 0.5rem;
 }
+
+/* Scaling Settings (Boss-ify/Minion-ify values editor) — separate ApplicationV2 window, same reasoning as the Boss-ify dialog above for using an id selector here instead of the encounter-builder-2024 class scope. */
+#encounter-builder-2024-scaling-settings fieldset {
+  margin-bottom: 0.75rem;
+}
+
+#encounter-builder-2024-scaling-settings .scaling-settings-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#encounter-builder-2024-scaling-settings .scaling-settings-table th,
+#encounter-builder-2024-scaling-settings .scaling-settings-table td {
+  padding: 0.2rem 0.4rem;
+  text-align: left;
+}
+
+#encounter-builder-2024-scaling-settings .scaling-settings-table input {
+  width: 4rem;
+}
+
+#encounter-builder-2024-scaling-settings .scaling-settings-hint {
+  font-size: 0.8em;
+  opacity: 0.8;
+}
+
+#encounter-builder-2024-scaling-settings .scaling-settings-minion {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+#encounter-builder-2024-scaling-settings .scaling-settings-minion input {
+  width: 4rem;
+}
+
+#encounter-builder-2024-scaling-settings .scaling-settings-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}

@@ -1,0 +1,35 @@
+<div class="scaling-settings">
+  <fieldset>
+    <legend>Boss-ify Tiers</legend>
+    <table class="scaling-settings-table">
+      <thead>
+        <tr><th>Tier</th><th>HP/Damage %</th><th>AC Bonus</th><th>Ability Bonus</th></tr>
+      </thead>
+      <tbody>
+        {{#each tierRows}}
+          <tr>
+            <td>{{this.label}}</td>
+            <td><input type="number" name="{{this.key}}-percent" value="{{this.percent}}" min="100" max="1000" step="5" /></td>
+            <td><input type="number" name="{{this.key}}-acBonus" value="{{this.acBonus}}" min="0" max="20" /></td>
+            <td><input type="number" name="{{this.key}}-abilityBonus" value="{{this.abilityBonus}}" min="0" max="20" /></td>
+          </tr>
+        {{/each}}
+      </tbody>
+    </table>
+    <p class="scaling-settings-hint">RAW is always 100% / +0 AC / +0 Ability (no change) and isn't editable.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Minion-ify</legend>
+    <label class="scaling-settings-minion">
+      XP cost (% of normal)
+      <input type="number" name="minionXpPercent" value="{{minionXpPercent}}" min="0" max="100" />
+    </label>
+  </fieldset>
+
+  <div class="scaling-settings-buttons">
+    <button type="button" data-action="save">Save</button>
+    <button type="button" data-action="resetDefaults">Reset to Defaults</button>
+    <button type="button" data-action="cancel">Cancel</button>
+  </div>
+</div>

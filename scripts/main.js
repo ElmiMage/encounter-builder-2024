@@ -1,5 +1,7 @@
 import { EncounterBuilderApp } from "./encounter-builder-app.js";
 import { humanizeToken } from "./format.js";
+import { ScalingSettingsApp } from "./scaling-settings-app.js";
+import { MINION_XP_MULTIPLIER } from "./minion-scaling.js";
 
 let appInstance = null;
 
@@ -64,6 +66,35 @@ Hooks.once("init", () => {
     type: String,
     choices: { auto: "Tier (RAW)", partyLevel: "Match Party Level (smoothed)" },
     default: "auto",
+  });
+
+  // Boss-ify/Minion-ify tuning values — hidden from the default settings
+  // list (config:false, like the compendium-selection settings above) since
+  // there are 10 individual numbers between them; edited instead through a
+  // dedicated menu app (registerMenu below) that shows them as one small
+  // table instead of 10 separate rows. bossifyTierConfig stores only
+  // whatever the GM has actually changed (mergeTierConfig in
+  // bossify-scaling.js layers it onto the built-in defaults), so it starts
+  // as {} rather than a full copy of BOSSIFY_TIERS.
+  game.settings.register("encounter-builder-2024", "bossifyTierConfig", {
+    scope: "client",
+    config: false,
+    type: Object,
+    default: {},
+  });
+  game.settings.register("encounter-builder-2024", "minionXpMultiplier", {
+    scope: "client",
+    config: false,
+    type: Number,
+    default: Math.round(MINION_XP_MULTIPLIER * 100),
+  });
+  game.settings.registerMenu("encounter-builder-2024", "scalingConfigMenu", {
+    name: "Boss-ify / Minion-ify Values",
+    label: "Configure Values",
+    hint: "Edit the HP/damage percentages and AC/ability bonuses used by Boss-ify's tiers, and the XP discount Minion-ify applies.",
+    icon: "fa-solid fa-sliders",
+    type: ScalingSettingsApp,
+    restricted: true,
   });
 });
 

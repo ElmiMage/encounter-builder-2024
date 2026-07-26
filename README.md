@@ -31,6 +31,9 @@ with a fully editable preview before creating anything.
   Also reversible
 - **Encounter HP** mode (RAW / Average / Maxroll) controls how every
   monster's HP is set when placed, independent of Boss-ify/Minion
+- Boss-ify's tier percentages/AC/ability bonuses and Minion's XP discount
+  are GM-tunable per-user under Settings > Configure Settings > Module
+  Settings > "Configure Values" (defaults match the numbers above)
 - In-app **Help** button (next to the tabs) explains every button and
   field in plain language
 - Lair Actions: monsters that have them get a per-encounter "Lair" toggle,

@@ -17,8 +17,9 @@
   dort reicht Syntax-Check + ein paar Hand-Assertions.
 - Foundry-abhängiger Code (canvas-picker.js, Token-Platzierung,
   Actor/Item-Erzeugung in loot-generator.js, Actor-Mutation in
-  monster-scaling.js, die Boss-ify-Dialog-App in bossify-dialog.js) kann
-  NICHT isoliert getestet werden — hier reicht
+  monster-scaling.js, die Boss-ify-Dialog-App in bossify-dialog.js, die
+  Settings-Editor-App in scaling-settings-app.js) kann NICHT isoliert
+  getestet werden — hier reicht
   sorgfältige Syntaxprüfung + klare Kommentierung, was ungetestet ist.
   Live-Testing läuft über eine Directory-Junction von Foundrys
   `Data/modules/encounter-builder-2024` auf dieses Repo — jede Änderung
@@ -38,25 +39,64 @@
   gekennzeichnet, nicht RAW). Habitat-Feld-Struktur war nie live
   verifiziert (Dropdown erscheint nur, falls `availableHabitats` nicht
   leer ist — ob echte Werte durchkommen, unbestätigt).
-  Boss-ify-Feature (bossify-scaling.js, monster-scaling.js,
-  bossify-dialog.js): durchlief mehrere Iterationen. v1/v2 versuchten,
-  eine Ziel-CR anhand einer aus dem 2024-DMG abgetippten "Monster
-  Statistics by Challenge Rating"-Tabelle anzusteuern (CR-Stufen-Buttons +
-  Guideline-Delta-Berechnung, angelehnt an Boss Loot Monster Tools). Das
-  wurde auf expliziten Nutzerwunsch verworfen — zu kompliziert, und die
-  DMG-Tabelle wich an mehreren Stellen von Boss Loots eigener Tabelle ab
-  (unterschiedliche Datenbasis, nicht nur AC). **v3 (aktuell, seit
-  2026-07)**: kein CR-Konzept mehr. Der GM wählt eine benannte Boss-ify-
-  Tier-Stufe (RAW 100% / Moderate 130% / High 150% / Deadly 200%,
+- Boss-ify-Feature (bossify-scaling.js, monster-scaling.js,
+  bossify-dialog.js, scaling-settings-app.js): durchlief mehrere
+  Iterationen. v1/v2 versuchten, eine Ziel-CR anhand einer aus dem
+  2024-DMG abgetippten "Monster Statistics by Challenge Rating"-Tabelle
+  anzusteuern (CR-Stufen-Buttons + Guideline-Delta-Berechnung, angelehnt
+  an Boss Loot Monster Tools) — auf expliziten Nutzerwunsch verworfen (zu
+  kompliziert, und die DMG-Tabelle wich an mehreren Stellen von Boss
+  Loots eigener Tabelle ab, nicht nur AC).
+  **v3 (aktuell, seit 2026-07)**: kein CR-Konzept mehr. Der GM wählt eine
+  benannte Tier-Stufe (RAW 100% / Moderate 130% / High 150% / Deadly 200%,
   `BOSSIFY_TIERS` in bossify-scaling.js) — HP und Schadenswürfel skalieren
   direkt mit diesem Prozentsatz relativ zu den aktuellen Werten der
-  Kreatur selbst (keine Tabellen-Nachschlage mehr nötig), AC und
-  Ability Scores bekommen stattdessen einen kleinen festen Bonus pro Stufe
+  Kreatur selbst (keine Tabellen-Nachschlage mehr nötig). AC und Ability
+  Scores bekommen stattdessen einen kleinen festen Bonus pro Stufe
   (0/+1×+2/+2×+4/+3×+6), weil eine wörtliche Prozent-Skalierung dort
   unsinnige/unmögliche Werte ergäbe (Ability Score 20 bei 200% wäre 40).
   Alle Tier-Werte sind reine Hausregel, kein DMG-Wert — bewusster
   Abgrenzungspunkt zu Boss Loots CR-Tabellen-Ansatz.
-  Minion-ify-Feature (minion-scaling.js, monster-scaling.js): CR→HP/Damage-
+  Seit 2026-07 sind diese Tier-Werte (Prozent/AC-Bonus/Ability-Bonus für
+  Moderate/High/Deadly, RAW bleibt fix) sowie der Minion-XP-Multiplikator
+  (siehe Minion-ify-Absatz unten) pro GM einstellbar über einen
+  Settings-Menu-Eintrag (`scaling-settings-app.js`/`scaling-settings.hbs`,
+  `game.settings.registerMenu`) statt 10 einzelne rohe Felder in Foundrys
+  Standard-Settings-Liste — bewusst eine kleine editierbare Tabelle statt
+  vieler Einzelzeilen. Gespeichert als zwei `config:false`-Settings
+  (`bossifyTierConfig` als partielles Override-Objekt, gemergt via
+  `mergeTierConfig()` auf die Code-Defaults; `minionXpMultiplier` als
+  0-100-Prozentzahl) — client-scoped wie die übrigen Preference-Settings
+  in main.js, jeder GM stellt also seine eigenen Werte ein.
+- Boss-ify-Schadensskalierung — zwei dnd5e-Schema-Fallstricke, beide beim
+  Live-Testen entdeckt und gegen die installierte dnd5e-5.3.3-Quelle
+  verifiziert (`monster-scaling.js`):
+  1. `scaleDamagePart` rundet die Würfelanzahl bewusst AB (nicht auf/
+     nächstgelegen) und gleicht die Rundungsdifferenz als festen Bonus
+     aus (z.B. 1d8 bei 130% → "1d8 + 1" statt ungenau unverändert "1d8")
+     — Abrunden verhindert, dass der Ausgleichsbonus je negativ wird
+     ("-N" auf einem hochskalierten Monster wäre verwirrend). Der
+     Ausgleich wird an ein evtl. vorhandenes `bonus`-Feld angehängt (nie
+     ersetzt/ausgewertet), funktioniert also auch bei dynamischen Formeln
+     wie `@abilities.str.mod`. Gilt nur für den regulären
+     Würfelanzahl/-größe/Bonus-Pfad, nicht für `custom.formula`-
+     Schadensangaben (bleiben bei reiner Roll.alter-Würfel-Skalierung).
+     Kompatibilität mit Midi QoL nur statisch verifiziert (Midi ruft laut
+     Quellcode `super.rollDamage()` auf dnd5e's eigene Activity-Klasse
+     auf, liest also dieselben Felder wie ein normaler Wurf) — nicht live
+     mit aktivem Midi QoL getestet.
+  2. Eine Activity mit "Include Base Damage" bekommt bei JEDER
+     Datenaufbereitung eine `base:true, locked:true`-Kopie von
+     `item.system.damage.base` vorne in `activity.damage.parts`
+     eingeschoben (`AttackActivity#prepareFinalData` in dnd5e.mjs) — rein
+     abgeleitete Anzeige-Daten, nicht gespeichert. `buildDamagePartUpdates`
+     filtert solche `part.base === true`-Einträge jetzt heraus, bevor
+     Activity-Parts skaliert werden (sonst: doppelte Grund-Schadenszeile
+     UND Typ-Verlust, da diese Kopien DataModel-Instanzen statt reiner
+     Objekte sind — `{...part}` verliert dabei Felder wie `types`;
+     `toPlainPart()` normalisiert jetzt jeden Part über `.toObject()` vor
+     dem Spreaden).
+- Minion-ify-Feature (minion-scaling.js, monster-scaling.js): CR→HP/Damage-
   Tabelle aus einem Buch-Scan von MCDM's *Flee, Mortals!* ("Minion
   Statistics by Challenge Rating") abgetippt, CR 0-20 (deckt den vollen
   Buch-Bereich ab), einfach-quellenverifiziert wie die übrigen abgetippten
@@ -70,11 +110,12 @@
   Kampf-Zeit-Automatisierung (neues technisches Terrain für dieses Modul,
   bräuchte dnd5e-Damage-Hooks wie `dnd5e.preApplyDamage`) zu vermeiden.
   Reine Stat-Konvertierung, analog zum Scope von Boss-ify/Encounter-HP-Modus.
-  `MINION_XP_MULTIPLIER` (minion-scaling.js, aktuell 0.1) senkt die für die
-  Budget-Leiste/Auto-Fill gezählte XP eines minionifizierten Eintrags auf
-  10% — MCDM's Tabelle hat keine XP-Spalte, das ist reine Hausregel-
-  Schätzung, kein Buch-Wert. Nimmt Vorrang vor der Lager-XP-Anpassung, falls
-  beides gleichzeitig gesetzt wäre.
+  `MINION_XP_MULTIPLIER` (minion-scaling.js, Default 0.1 = 10%, per
+  Settings-Menu überschreibbar — siehe Boss-ify-Absatz oben) senkt die für
+  die Budget-Leiste/Auto-Fill gezählte XP eines minionifizierten Eintrags
+  entsprechend — MCDM's Tabelle hat keine XP-Spalte, das ist reine
+  Hausregel-Schätzung, kein Buch-Wert. Nimmt Vorrang vor der
+  Lager-XP-Anpassung, falls beides gleichzeitig gesetzt wäre.
 - Keine Lokalisierung vorhanden — alle UI-Texte sind fest auf Englisch im
   Template/JS. Ein früheres, ungenutztes lang/en.json-Scaffold wurde
   entfernt (nie mit `localize`/`game.i18n` verdrahtet). Falls Übersetzung

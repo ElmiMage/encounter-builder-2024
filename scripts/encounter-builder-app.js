@@ -9,7 +9,7 @@ import { rollIndividualTreasureForEncounter } from "./individual-treasure-tables
 import { humanizeToken, formatCR } from "./format.js";
 import { bossifyActor, revertBossify, minionifyActor, revertMinionify, scaleEncounterHp } from "./monster-scaling.js";
 import { BossifyDialog } from "./bossify-dialog.js";
-import { MINION_XP_MULTIPLIER } from "./minion-scaling.js";
+import { resolveMinionXpMultiplier } from "./minion-scaling.js";
 
 const { HandlebarsApplicationMixin, ApplicationV2 } = foundry.applications.api;
 
@@ -155,12 +155,13 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
   /**
    * XP to use for budget-spending purposes for one encounter entry.
-   * Minion-ify checked first: a minion-ified copy counts as only
-   * MINION_XP_MULTIPLIER of its normal XP (see minion-scaling.js — MCDM's
-   * table has no XP value at all, this is a Hausregel reflecting how much
-   * weaker a single minion is), overriding the lair adjustment below since
-   * a minion-ified monster's lair-action XP bump wouldn't make sense at
-   * its now-trivial combat weight.
+   * Minion-ify checked first: a minion-ified copy counts as only the GM's
+   * configured percentage of its normal XP (minionXpMultiplier setting,
+   * default 10% — see minion-scaling.js's resolveMinionXpMultiplier();
+   * MCDM's table has no XP value at all, this is a Hausregel reflecting how
+   * much weaker a single minion is), overriding the lair adjustment below
+   * since a minion-ified monster's lair-action XP bump wouldn't make sense
+   * at its now-trivial combat weight.
    *
    * Otherwise: the monster's normal XP, or the CR+1 value if the GM has
    * marked it as fighting in its own lair (only meaningful for monsters
@@ -173,7 +174,8 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
    */
   #getEffectiveXp(entry) {
     if (entry.minionify) {
-      return Math.round((entry.monster.xp ?? 0) * MINION_XP_MULTIPLIER);
+      const multiplier = resolveMinionXpMultiplier(game.settings.get("encounter-builder-2024", "minionXpMultiplier"));
+      return Math.round((entry.monster.xp ?? 0) * multiplier);
     }
     if (entry.inLair && entry.monster.hasLairActions && entry.monster.cr != null) {
       return xpForChallengeRating(entry.monster.cr + 1) ?? entry.monster.xp ?? 0;

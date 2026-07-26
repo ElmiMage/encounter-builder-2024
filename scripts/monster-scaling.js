@@ -26,7 +26,7 @@
  *    up wherever the sheet/roll pulls damage from.
  */
 
-import { computeBossifyScale, BOSSIFY_TIERS } from "./bossify-scaling.js";
+import { computeBossifyScale, mergeTierConfig } from "./bossify-scaling.js";
 import { getMinionStats } from "./minion-scaling.js";
 import { computeHpForMode } from "./hp-formula.js";
 
@@ -45,7 +45,28 @@ function readActorSnapshot(actor) {
   };
 }
 
-/** Multiplies a single damage part's dice count by `ratio` (min 1 die), or alters a custom formula's leading dice term the same way. Returns { changed, part } so the caller only writes fields that actually moved. */
+/**
+ * Multiplies a single damage part's dice count by `ratio`, closing the
+ * whole-die rounding gap with a flat bonus top-up instead of quietly
+ * losing it. Whole dice alone is too coarse at low dice counts — e.g. 1d8
+ * at 130% (Moderate) would round to 1d8 with NO visible change at all — so
+ * this floors the dice count (never rounds up) and adds the shortfall as
+ * "+N" on the `bonus` field. Flooring means the top-up is always >= 0, so
+ * a scaled-UP creature never shows a confusing "-N" penalty on its stat
+ * block. `bonus` is a dnd5e FormulaField and can be a dynamic expression
+ * (e.g. "@abilities.str.mod") — this only ever APPENDS a plain number to
+ * whatever's already there, never evaluates or replaces it, so dynamic
+ * bonuses keep working exactly as before (and separately, Boss-ify's own
+ * ability-score bump already raises @mod-based bonuses on its own).
+ *
+ * Custom-formula damage parts (part.custom.enabled) are a different code
+ * path — an arbitrary multi-term formula string, not a clean number/
+ * denomination/bonus split — so they keep the simpler dice-only scaling
+ * via Roll.alter() instead of this top-up logic.
+ *
+ * Returns { changed, part } so the caller only writes fields that actually
+ * moved.
+ */
 function scaleDamagePart(part, ratio) {
   if (!part || ratio === 1) return { changed: false, part };
 
@@ -64,9 +85,19 @@ function scaleDamagePart(part, ratio) {
   const den = Number(part.denomination);
   if (!Number.isFinite(num) || !Number.isFinite(den) || num <= 0 || den <= 0) return { changed: false, part };
 
-  const newNum = Math.max(1, Math.round(num * ratio));
-  if (newNum === num) return { changed: false, part };
-  return { changed: true, part: { ...part, number: newNum } };
+  const newNum = Math.max(1, Math.floor(num * ratio));
+
+  const dieAvg = (den + 1) / 2;
+  const remainder = Math.round(num * ratio * dieAvg - newNum * dieAvg);
+
+  let newBonus = part.bonus;
+  if (remainder > 0) {
+    const trimmed = String(part.bonus ?? "").trim();
+    newBonus = trimmed ? `${trimmed} + ${remainder}` : String(remainder);
+  }
+
+  if (newNum === num && newBonus === part.bonus) return { changed: false, part };
+  return { changed: true, part: { ...part, number: newNum, bonus: newBonus } };
 }
 
 /** Replaces a single damage part's dice with a fixed, non-random value (via the custom-formula field) — Minion damage per MCDM's table is a flat number, not a die roll. Returns { changed, part } like scaleDamagePart, for the same shared buildDamagePartUpdates() below. */
@@ -78,12 +109,37 @@ function flattenDamagePart(part, flatValue) {
 }
 
 /**
+ * Damage parts read off derived/prepared item or activity data (as opposed
+ * to raw source data) can be live DamageData DataModel instances rather
+ * than plain objects — spreading one with `{...part, ...}` silently drops
+ * fields like `types` (DataModel fields aren't necessarily own-enumerable
+ * properties the spread operator picks up). Normalize through `.toObject()`
+ * first whenever one is available, so every part we actually write is a
+ * plain, complete object.
+ */
+function toPlainPart(part) {
+  if (!part) return part;
+  return typeof part.toObject === "function" ? part.toObject() : part;
+}
+
+/**
  * Walks every non-spell item's damage parts (base/versatile/each Activity's
  * damage.parts) and applies `transform(part) => {changed, part}` to each,
  * returning the updateEmbeddedDocuments("Item", ...) payload plus a matching
  * backup array for whatever actually changed. Shared by Boss-ify's ratio
  * scaling (scaleDamagePart) and Minion-ify's flat-value replacement
  * (flattenDamagePart) — same walk, different per-part transform.
+ *
+ * Activities with "Include Base Damage" enabled get a `base: true, locked:
+ * true` CLONE of the item's own damage.base unshifted into their
+ * damage.parts array every time dnd5e prepares derived data (see
+ * AttackActivity#prepareFinalData in dnd5e.mjs — confirmed by reading the
+ * installed system source) — it's an ephemeral display-only mirror, not
+ * real stored data. We already scale the real item.system.damage.base
+ * separately above, so these mirrored `base: true` entries are filtered
+ * out here; writing them back as if they were real parts is what caused
+ * an extra, type-less duplicate damage line to appear on the boss-ified
+ * actor's sheet in live testing.
  */
 function buildDamagePartUpdates(actor, transform) {
   const itemUpdates = [];
@@ -96,7 +152,7 @@ function buildDamagePartUpdates(actor, transform) {
     const backup = { id: item.id };
     let changed = false;
 
-    const base = item.system.damage?.base;
+    const base = toPlainPart(item.system.damage?.base);
     if (base) {
       const result = transform(base);
       if (result.changed) {
@@ -106,7 +162,7 @@ function buildDamagePartUpdates(actor, transform) {
       }
     }
 
-    const versatile = item.system.damage?.versatile;
+    const versatile = toPlainPart(item.system.damage?.versatile);
     if (versatile) {
       const result = transform(versatile);
       if (result.changed) {
@@ -117,8 +173,8 @@ function buildDamagePartUpdates(actor, transform) {
     }
 
     for (const activity of item.system.activities?.contents ?? []) {
-      const parts = activity.damage?.parts;
-      if (!Array.isArray(parts) || parts.length === 0) continue;
+      const parts = (activity.damage?.parts ?? []).filter((p) => !p?.base).map(toPlainPart);
+      if (parts.length === 0) continue;
 
       const results = parts.map(transform);
       if (results.some((r) => r.changed)) {
@@ -161,7 +217,8 @@ export async function bossifyActor(actor, tier, options = {}) {
   const { applyAC = true, applyHP = true, applyAbilities = true, applyDamageDice = true } = options;
   try {
     const snapshot = readActorSnapshot(actor);
-    const scaled = computeBossifyScale(snapshot, tier);
+    const tierConfig = mergeTierConfig(game.settings.get(MODULE_ID, "bossifyTierConfig"));
+    const scaled = computeBossifyScale(snapshot, tier, tierConfig);
 
     const actorUpdates = {};
 
@@ -202,7 +259,7 @@ export async function bossifyActor(actor, tier, options = {}) {
     await actor.update(actorUpdates);
     if (itemUpdates.length > 0) await actor.updateEmbeddedDocuments("Item", itemUpdates);
 
-    ui.notifications.info(`${actor.name} boss-ified (${BOSSIFY_TIERS[tier]?.label ?? tier}).`);
+    ui.notifications.info(`${actor.name} boss-ified (${tierConfig[tier]?.label ?? tier}).`);
     return actor;
   } catch (err) {
     console.error("Encounter Builder | bossifyActor failed:", err);
