@@ -31,17 +31,17 @@
   "media": [
     {
       "type": "screenshot",
-      "url": "https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@main/screenshots/encounter-tab.jpg",
+      "url": "https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@master/screenshots/encounter-tab.jpg",
       "caption": "Encounter tab"
     },
     {
       "type": "screenshot",
-      "url": "https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@main/screenshots/loot-tab.jpg",
+      "url": "https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@master/screenshots/loot-tab.jpg",
       "caption": "Loot tab — Individual Treasure"
     },
     {
       "type": "screenshot",
-      "url": "https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@main/screenshots/treasure-hoard-tab.jpg",
+      "url": "https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@master/screenshots/treasure-hoard-tab.jpg",
       "caption": "Treasure Hoard tab"
     }
   ],
