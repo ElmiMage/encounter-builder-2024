@@ -212,7 +212,7 @@ function normalizeHabitat(raw) {
   if (raw instanceof Set) return [...raw].map(extractHabitatLabel).filter(Boolean);
   if (raw.value) {
     const labels = normalizeHabitat(raw.value);
-    const custom = typeof raw.custom === "string" ? raw.custom.trim() : "";
+    const custom = typeof raw.custom === "string" ? raw.custom.trim().toLowerCase() : "";
     if (custom) labels.push(custom);
     return labels;
   }
@@ -225,13 +225,22 @@ function normalizeHabitat(raw) {
  * creatures: {type: "planar", subtype: "elemental plane of air"}), both
  * are kept — otherwise every planar creature would collapse into one
  * generic "planar" filter value regardless of which plane.
+ *
+ * Lower-cased like every other raw filter key in this module (creature
+ * type, subtype, rarity) — display capitalization is applied later by
+ * the `humanize` Handlebars helper, never baked into the stored value.
+ * This also fixes a real filtering bug, not just cosmetics: the transcribed
+ * subtype text is inconsistently cased across source compendiums (e.g.
+ * "Shadowfell" vs "shadowfell"), and getAvailableHabitats dedupes by exact
+ * string match — without normalizing here, picking one casing from the
+ * dropdown would silently miss creatures tagged with the other casing.
  */
 function extractHabitatLabel(entry) {
-  if (typeof entry === "string") return entry;
-  if (entry?.type && entry?.subtype) return `${entry.type} (${entry.subtype})`;
-  if (entry?.value) return entry.value;
-  if (entry?.type) return entry.type;
-  if (entry?.label) return entry.label;
+  if (typeof entry === "string") return entry.toLowerCase();
+  if (entry?.type && entry?.subtype) return `${entry.type} (${entry.subtype})`.toLowerCase();
+  if (entry?.value) return String(entry.value).toLowerCase();
+  if (entry?.type) return entry.type.toLowerCase();
+  if (entry?.label) return String(entry.label).toLowerCase();
   return null; // deliberately drop anything we can't make sense of, rather than showing "[object Object]"
 }
 

@@ -50,12 +50,25 @@
   Filtereintrag verschmolzen), und `normalizeHabitat` hängt das freie
   `.custom`-Textfeld als eigenen Eintrag an, statt es zu verwerfen. Mit
   Hand-Assertions gegen die live bestätigte Datenform abgesichert.
-  Live-Nebenbefund, absichtlich nicht angefasst: die Kompendium-
-  Quelldaten selbst sind an einigen Stellen inkonsistent (z.B.
-  "Shadowfell" vs. "shadowfell", "elemental plane of air" vs.
-  "elementalplane of air" — echter Tippfehler im Buch-Scan), was im
-  Habitat-Filter zu sichtbaren Fast-Duplikaten führt. Datenproblem der
-  Quelle, kein Modul-Bug.
+  Dritter Nebenbefund, ebenfalls behoben: die Kompendium-Quelldaten
+  selbst sind an einigen Stellen uneinheitlich großgeschrieben (z.B.
+  "Shadowfell" vs. "shadowfell" für dieselbe Ebene) — das war kein rein
+  kosmetisches Problem, sondern ein echter Filter-Bug, weil
+  `getAvailableHabitats` per exaktem String-Vergleich dedupliziert:
+  ein GM, der eine Schreibweise aus dem Dropdown wählt, hätte Monster
+  mit der jeweils anderen Groß-/Kleinschreibung unsichtbar verpasst.
+  `extractHabitatLabel` lowercased jetzt konsequent wie alle anderen
+  rohen Filterkeys in diesem Modul (Creature Type, Subtype, Rarity) —
+  Anzeige-Großschreibung kommt weiterhin vom bestehenden `humanize`-
+  Handlebars-Helper (`format.js`/`humanizeToken`), nie im gespeicherten
+  Wert selbst. Live verifiziert: "planar (Shadowfell)"/
+  "planar (shadowfell)" verschmelzen jetzt zu einem Dropdown-Eintrag
+  (33 statt 34 Werte). Bewusst NICHT angefasst: der echte Tippfehler
+  "elementalplane of air" (fehlendes Leerzeichen) bleibt als eigener
+  Eintrag bestehen — das ist kein Schreibweisen-, sondern ein
+  Zeichenfehler ohne generische Korrekturmöglichkeit; eine Hardcoded-
+  Korrekturliste für einzelne bekannte Tippfehler wäre fragil und wurde
+  bewusst nicht gebaut.
 - Boss-ify-Feature (bossify-scaling.js, monster-scaling.js,
   bossify-dialog.js, scaling-settings-app.js): durchlief mehrere
   Iterationen. v1/v2 versuchten, eine Ziel-CR anhand einer aus dem
