@@ -137,15 +137,20 @@
      die Chat-Karten-Buttons brachte die Rolls zustande; das automatische
      Fortschreiten ohne Klick (`autoRollAttack`/`autoRollDamage`) hat in
      diesem Testaufbau nie ausgelöst, ebenso wenig `autoApplyDamage: "yes"`
-     (Ziel-HP blieb unverändert trotz korrekt berechnetem Schaden). Nicht
-     zweifelsfrei geklärt, ob das ein generelles Setup-Detail ist (z.B.
-     GM-Socket-Ausführung, die einen zweiten aktiven Client erwartet) oder
-     eine Eigenheit dieser Automatisierungs-Testumgebung — betrifft aber
-     Midis eigene Auto-Apply-Mechanik, nicht die Schadensdaten unseres
-     Moduls, die in JEDEM getesteten Pfad (direkter Rollcall, echter UI-
-     Klick, Midis `createDamageDetail`) korrekt ankamen. Nicht getestet:
-     Auto-Target und Reaktionen (außerhalb des Scopes von Boss-ify/
-     Minion-ify-Kompatibilität).
+     (Ziel-HP blieb unverändert trotz korrekt berechnetem Schaden). Mit
+     einem Kontrolltest geklärt, ob das an unseren skalierten Daten liegt:
+     derselbe Ablauf (Karte → Attack-Klick → Konfigurationsdialog) mit
+     einem KOMPLETT UNVERÄNDERTEN, nicht boss-ifizierten Goblin zeigt
+     exakt dasselbe Verhalten — derselbe Konfigurationsdialog erscheint,
+     kein automatisches Durchlaufen. Damit eindeutig belegt: das
+     Ausbleiben des vollautomatischen Fortschreitens ist ein generelles
+     Verhalten dieser automatisierten Browser-Testumgebung (vermutlich
+     Dialog-/Fokus-bedingt bei rein skriptgesteuerter Bedienung, nicht
+     GM-Socket-bedingt), unabhängig von Boss-ify/Minion-ify — betrifft
+     also nicht unsere Schadensdaten, die in JEDEM getesteten Pfad
+     (direkter Rollcall, echter UI-Klick, Midis `createDamageDetail`)
+     korrekt ankamen. Nicht getestet: Auto-Target und Reaktionen
+     (außerhalb des Scopes von Boss-ify/Minion-ify-Kompatibilität).
   2. Eine Activity mit "Include Base Damage" bekommt bei JEDER
      Datenaufbereitung eine `base:true, locked:true`-Kopie von
      `item.system.damage.base` vorne in `activity.damage.parts`
