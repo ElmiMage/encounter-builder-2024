@@ -125,6 +125,15 @@ simulated rolls before being called done. The Minion stat table is
 transcribed from MCDM's *Flee, Mortals!*; Boss-ify's tier percentages are
 an original house rule, not sourced from any book.
 
+**Midi QoL compatibility**: Boss-ify's and Minion-ify's damage scaling has
+been live-verified against [Midi QoL](https://foundryvtt.com/packages/midi-qol)
+(v13.0.64, Foundry v13.351, dnd5e 5.3.3) — Midi subclasses dnd5e's own
+Activity classes rather than replacing them, so it reads the same scaled
+damage data as a normal roll, including weapons with "Include Base
+Damage" enabled. Both the dice-based Boss-ify scaling and Minion-ify's
+fixed `custom.formula` damage rolled correctly through Midi's own
+`MidiAttackActivity` class.
+
 ## Support
 
 This module is free and will stay free. If it saved you some prep time and
