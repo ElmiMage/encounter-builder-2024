@@ -111,10 +111,20 @@
      wie `@abilities.str.mod`. Gilt nur für den regulären
      Würfelanzahl/-größe/Bonus-Pfad, nicht für `custom.formula`-
      Schadensangaben (bleiben bei reiner Roll.alter-Würfel-Skalierung).
-     Kompatibilität mit Midi QoL nur statisch verifiziert (Midi ruft laut
-     Quellcode `super.rollDamage()` auf dnd5e's eigene Activity-Klasse
-     auf, liest also dieselben Felder wie ein normaler Wurf) — nicht live
-     mit aktivem Midi QoL getestet.
+     Kompatibilität mit Midi QoL seit 2026-08 live verifiziert (zuvor nur
+     statisch): Midi subklassifiziert dnd5e's `AttackActivity` tatsächlich
+     zu `MidiAttackActivity` (bestätigt über `activity.constructor.name`
+     und einen Error-Stack, live gegen Foundry 13.351 / dnd5e 5.3.3 /
+     Midi QoL 13.0.64 getestet). Boss-ify (Tier High, 150%) an einem
+     Goblin mit "Include Base Damage"-Scimitar (der Sonderfall aus Punkt 2
+     oben) ergab beim Schadenswurf über Midis Klasse `1d6 + 2 + 4`
+     (abgerundete Würfelzahl + unser Rundungs-Ausgleichsbonus + der
+     dynamisch aus der ebenfalls hochskalierten DEX berechnete Ability-
+     Mod-Term) — kein Crash, keine doppelte Basis-Schadenszeile
+     (`preparedPartsCount: 1`). Damit ist der Kern-Kompatibilitätspfad
+     bestätigt; nicht getestet wurden Midis volle Automatisierung
+     (Auto-Target, Auto-Apply-Damage, Reaktionen) und Minion-ify, nur der
+     reine Boss-ify-Schadenspfad.
   2. Eine Activity mit "Include Base Damage" bekommt bei JEDER
      Datenaufbereitung eine `base:true, locked:true`-Kopie von
      `item.system.damage.base` vorne in `activity.damage.parts`
