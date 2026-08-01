@@ -518,6 +518,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     });
     this.element.querySelector('[name="bossMode"]')?.addEventListener("change", (ev) => {
       this.bossMode = ev.target.checked;
+      this.render();
     });
     this.element.querySelector('[name="creatureTypeFilter"]')?.addEventListener("change", (ev) => {
       this.creatureTypeFilter = ev.target.value;

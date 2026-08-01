@@ -186,3 +186,32 @@
   Template/JS. Ein früheres, ungenutztes lang/en.json-Scaffold wurde
   entfernt (nie mit `localize`/`game.i18n` verdrahtet). Falls Übersetzung
   gewünscht ist, muss das als eigenes Feature neu aufgebaut werden.
+- Foundry-abhängiger Code seit 2026-08 erstmals live durchgeklickt (statt
+  nur syntaktisch geprüft), über eine Wegwerf-Szene in der Testwelt:
+  Encounter-Tab (Monster hinzufügen, Boss markieren, Boss-ify-Dialog live
+  mit korrekter Preview — AC/HP/Ability/Damage-Werte stimmten exakt mit
+  `computeBossifyScale` überein — Apply, Create Combat), Loot-Tab (Roll
+  Individual Treasure, Generate Loot). Dabei einen echten Bug gefunden
+  und behoben: der `bossMode`-Checkbox-Listener in
+  `encounter-builder-app.js` (`_onRender`, `[name="bossMode"]`) setzte
+  `this.bossMode` korrekt, rief aber nie `this.render()` auf — anders als
+  jeder Nachbar-Listener im selben Block. Ein GM, der "Boss Encounter"
+  anklickt, sah dadurch keine Reaktion (die Pro-Monster-"Boss"-Checkbox
+  blieb unsichtbar), bis zufällig ein anderer Re-Render ausgelöst wurde
+  (z.B. Filter ändern). Live reproduziert (Checkbox angeklickt, Boss-
+  Checkbox blieb im DOM unsichtbar, obwohl `bossMode` intern bereits
+  `true` war) und nach dem Fix erneut verifiziert (Checkbox erscheint
+  jetzt ohne Umweg). `canvas-picker.js`s `pointerdown`-Listener lässt
+  sich in einer rein skriptgesteuerten Browser-Session nicht über
+  synthetische PointerEvents auf dem PIXI-Canvas auslösen (PIXIs
+  Event-System nimmt sie nicht an) — stattdessen direkt gegen
+  `canvas.stage.emit("pointerdown", {getLocalPosition: () => ({x,y})})`
+  getestet, was exakt denselben Code-Pfad wie ein echter Klick durchläuft
+  und die Promise korrekt auflöste; Token-Spiral-Platzierung
+  (`computeSpiralPositions`/`clampToSceneBounds`) und die anschließende
+  echte `Combat`- bzw. Loot-`Actor`-Erzeugung liefen dabei fehlerfrei.
+  `toggleMinionify`/`toggleBoss` selbst laufen über das ApplicationV2-
+  Actions-Framework (nicht den fehlerhaften `bossMode`-Listener-Pattern)
+  und wurden per Code-Review auf denselben Fehler geprüft — kein
+  Analogon gefunden. `scaling-settings-app.js` (Settings-Editor) und die
+  komplette Minion-ify-UI-Klickkette blieben in dieser Runde ungetestet.
