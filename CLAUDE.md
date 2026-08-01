@@ -121,10 +121,31 @@
      (abgerundete Würfelzahl + unser Rundungs-Ausgleichsbonus + der
      dynamisch aus der ebenfalls hochskalierten DEX berechnete Ability-
      Mod-Term) — kein Crash, keine doppelte Basis-Schadenszeile
-     (`preparedPartsCount: 1`). Damit ist der Kern-Kompatibilitätspfad
-     bestätigt; nicht getestet wurden Midis volle Automatisierung
-     (Auto-Target, Auto-Apply-Damage, Reaktionen) und Minion-ify, nur der
-     reine Boss-ify-Schadenspfad.
+     (`preparedPartsCount: 1`). Danach zusätzlich über die ECHTE Midi-Chat-
+     Karten-UI wiederholt (Attack-Button → Konfigurationsdialog → Normal,
+     Damage-Button → Konfigurationsdialog → Normal, mit `autoRollAttack`/
+     `autoCheckHit`/`autoRollDamage` testweise hochgedreht): identisches
+     Ergebnis (`1d20 + 4 + 2` Treffer, `1d6 + 2 + 4` Schaden) — UI-Pfad und
+     direkter API-Aufruf stimmen überein. Minion-ify (fixer
+     `custom.formula`-Schaden statt Würfel) separat getestet: ein Orc→
+     Minion-Greataxe (`custom.formula: "1"`) rollt über dieselbe
+     `MidiAttackActivity`-Klasse korrekt `1` Slashing-Schaden, von Midis
+     eigenem `createDamageDetail()` richtig typisiert. `completeActivityUse`
+     (Midis Headless-Convenience-Funktion) und der direkte `.use()`-Aufruf
+     ohne Button-Klick blieben in dieser automatisierten Browser-Session
+     wirkungslos (keine Rolls, kein Fehler) — erst der echte UI-Klick auf
+     die Chat-Karten-Buttons brachte die Rolls zustande; das automatische
+     Fortschreiten ohne Klick (`autoRollAttack`/`autoRollDamage`) hat in
+     diesem Testaufbau nie ausgelöst, ebenso wenig `autoApplyDamage: "yes"`
+     (Ziel-HP blieb unverändert trotz korrekt berechnetem Schaden). Nicht
+     zweifelsfrei geklärt, ob das ein generelles Setup-Detail ist (z.B.
+     GM-Socket-Ausführung, die einen zweiten aktiven Client erwartet) oder
+     eine Eigenheit dieser Automatisierungs-Testumgebung — betrifft aber
+     Midis eigene Auto-Apply-Mechanik, nicht die Schadensdaten unseres
+     Moduls, die in JEDEM getesteten Pfad (direkter Rollcall, echter UI-
+     Klick, Midis `createDamageDetail`) korrekt ankamen. Nicht getestet:
+     Auto-Target und Reaktionen (außerhalb des Scopes von Boss-ify/
+     Minion-ify-Kompatibilität).
   2. Eine Activity mit "Include Base Damage" bekommt bei JEDER
      Datenaufbereitung eine `base:true, locked:true`-Kopie von
      `item.system.damage.base` vorne in `activity.damage.parts`
