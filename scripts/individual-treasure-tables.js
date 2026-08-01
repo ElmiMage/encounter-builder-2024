@@ -7,14 +7,18 @@ import { getTierForCR } from "./treasure-tables.js";
  * which represent a much larger, rarer find belonging to monsters that
  * actually collect treasure (dragons, etc.) and are rolled far less often.
  *
- * CONFIDENCE NOTE: only one live source was reachable for these values
- * (dungeonmastertools.github.io) — Roll20 gates the real table behind
- * purchase/login and thievesguild.cc blocks automated fetches. The 0-4
- * row matches the long-stable, widely-published 2014 DMG table exactly,
- * which supports the other three tiers by structural consistency, but
- * unlike treasure-tables.js this hasn't been cross-checked against a
- * second independent source — spot-check against your own book before
- * relying on it for anything high-stakes.
+ * CONFIDENCE NOTE (updated 2026-08): cross-checked against a second,
+ * independent source (chartopia.d12dev.com, in addition to the original
+ * dungeonmastertools.github.io — Roll20 gates the real table behind
+ * purchase/login and thievesguild.cc blocks automated fetches). The 0-4
+ * row already matched the long-stable, widely-published 2014 DMG table
+ * exactly. Cross-checking the other three tiers turned up one real bug
+ * (now fixed): the 5-10 tier's 1-30 band was missing an `ep` component
+ * that both sources agree should be there. Everything else matches
+ * across both sources except a single one-value band-boundary wobble in
+ * the 11-16 tier (21-35 vs 21-34) where dungeonmastertools agrees with
+ * this file against chartopia alone — kept as-is on 2-to-1 agreement,
+ * but not confirmable without the physical book.
  *
  * Each tier is a d100 table: roll 1-100, use the first band whose `max`
  * is >= the roll (bands are listed in ascending `max` order).
@@ -28,7 +32,7 @@ const INDIVIDUAL_TREASURE_TABLES = {
     { max: 100, pp: [1, 6, 1] },
   ],
   "5-10": [
-    { max: 30, cp: [4, 6, 100] },
+    { max: 30, cp: [4, 6, 100], ep: [1, 6, 10] },
     { max: 60, sp: [6, 6, 10], gp: [2, 6, 10] },
     { max: 70, ep: [1, 6, 100], gp: [2, 6, 10] },
     { max: 95, gp: [4, 6, 10] },

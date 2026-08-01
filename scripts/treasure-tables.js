@@ -17,9 +17,15 @@
  * copy of the book (easier to maintain/test while preserving the same
  * probabilities), and it only produces Magic Item Table letters A-G.
  * The real 11-16 and 17+ hoard tables also roll on Tables H and I (the
- * rarest slice, ~15-20% of the d100 range at those tiers) — this model
- * folds that slice into G/legendary instead, so very-high-CR hoards may
- * under-represent the single rarest magic-item band slightly.
+ * rarest slice) — this model folds that slice into G/legendary instead.
+ * Single-source research (chartopia.d12dev.com, cross-checked via its
+ * coin formulas matching our already-confirmed COIN_FORMULAS above —
+ * no second independent source found for the full d100 breakdown, so
+ * treat these two numbers as less certain than the coin math) puts the
+ * actual H+I slice at ~18% for 11-16 (close to this file's old "15-20%"
+ * guess) but ~28% for 17+ — meaningfully bigger than previously assumed,
+ * so very-high-CR hoards under-represent the rarest magic-item band more
+ * than this comment used to suggest.
  */
 
 export const COIN_FORMULAS = {
