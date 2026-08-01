@@ -16,10 +16,7 @@ const INDEX_FIELDS = [
   "system.details.type.value",
   "system.details.type.subtype",
   "system.traits.size",
-  // Speculative: dnd5e added Habitat/Treasure config (matching the 2024
-  // Monster Manual's stat block tags), but the exact actor field path
-  // wasn't confirmed from a static code read. Harmless to request even
-  // if it doesn't exist — getIndex simply returns undefined for it.
+  // Verified live (2026-08): shape is { value: [{type, subtype?}, ...], custom: "" }.
   "system.details.habitat",
   // Whether this monster HAS lair actions at all (system.resources.lair.value,
   // verified against the dnd5e source) — distinct from system.resources.lair.inside,
@@ -187,9 +184,9 @@ export async function loadMonsterIndex(collectionIds = null) {
         creatureType: entry.system?.details?.type?.value || "unknown",
         subtype: entry.system?.details?.type?.subtype || null,
         size: entry.system?.traits?.size || null,
-        // Normalized defensively since the exact shape wasn't confirmed
-        // from a static code read (could be a plain array, a Set-like
-        // object, or a {value, custom} wrapper depending on dnd5e version).
+        // Verified live shape is {value: [...], custom: ""}; the extra
+        // Array/Set branches in normalizeHabitat are defensive fallbacks
+        // for other dnd5e versions, not the confirmed common case.
         habitats: normalizeHabitat(entry.system?.details?.habitat),
         // Verified against dnd5e source: system.resources.lair.value means
         // the monster has lair actions available at all (as opposed to
@@ -204,22 +201,34 @@ export async function loadMonsterIndex(collectionIds = null) {
 }
 
 /**
- * Normalizes the (unconfirmed) habitat field into a flat array of
- * strings, regardless of whether dnd5e stores it as a plain array of
- * strings, a plain array of objects (e.g. {value: "arctic"} per entry),
- * a Set, or a {value, custom} wrapper.
+ * Normalizes the habitat field into a flat array of strings. Confirmed
+ * live shape is {value: [{type, subtype?}, ...], custom: ""}. The free-text
+ * `custom` field is appended as its own entry when non-empty. The Array/Set
+ * branches below are defensive fallbacks, not observed in practice.
  */
 function normalizeHabitat(raw) {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw.map(extractHabitatLabel).filter(Boolean);
   if (raw instanceof Set) return [...raw].map(extractHabitatLabel).filter(Boolean);
-  if (raw.value) return normalizeHabitat(raw.value);
+  if (raw.value) {
+    const labels = normalizeHabitat(raw.value);
+    const custom = typeof raw.custom === "string" ? raw.custom.trim() : "";
+    if (custom) labels.push(custom);
+    return labels;
+  }
   return [];
 }
 
-/** Pulls a display string out of a single habitat entry, whatever shape it turns out to be. */
+/**
+ * Pulls a display string out of a single habitat entry, whatever shape it
+ * turns out to be. When both type and subtype are present (e.g. planar
+ * creatures: {type: "planar", subtype: "elemental plane of air"}), both
+ * are kept — otherwise every planar creature would collapse into one
+ * generic "planar" filter value regardless of which plane.
+ */
 function extractHabitatLabel(entry) {
   if (typeof entry === "string") return entry;
+  if (entry?.type && entry?.subtype) return `${entry.type} (${entry.subtype})`;
   if (entry?.value) return entry.value;
   if (entry?.type) return entry.type;
   if (entry?.label) return entry.label;

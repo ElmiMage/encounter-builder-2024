@@ -36,9 +36,26 @@
   der Buch-Tabelle, deckt nur Magic Item Tables A-G statt A-I ab), die
   Individual-Treasure-Tabellen (nur einfach quellenverifiziert), und das
   komplette smoothed-loot-tables.js-System (explizit als Hausregel
-  gekennzeichnet, nicht RAW). Habitat-Feld-Struktur war nie live
-  verifiziert (Dropdown erscheint nur, falls `availableHabitats` nicht
-  leer ist — ob echte Werte durchkommen, unbestätigt).
+  gekennzeichnet, nicht RAW). Habitat-Feld: seit 2026-08 live gegen eine
+  laufende Foundry-Welt verifiziert (`system.details.habitat` =
+  `{value: [{type, subtype?}, ...], custom: ""}`, bestätigt u.a. an
+  `dnd-monster-manual.actors`, `dnd5e.actors24`,
+  `dnd-players-handbook.actors`, MCDM Flee-Mortals-Bestiary). Dropdown und
+  Filter funktionieren wie vorgesehen (13 reale Werte, Filter auf
+  "mountain" liefert 102 plausible Treffer). Zwei bei der Verifikation
+  gefundene Lücken wurden direkt mitbehoben: `extractHabitatLabel`
+  kombiniert jetzt `.type`+`.subtype` bei planaren Einträgen (z.B.
+  "planar (elemental plane of air)" statt nur "planar" für alle
+  Ebenen — sonst wären 22 verschiedene Planar-Werte in einem
+  Filtereintrag verschmolzen), und `normalizeHabitat` hängt das freie
+  `.custom`-Textfeld als eigenen Eintrag an, statt es zu verwerfen. Mit
+  Hand-Assertions gegen die live bestätigte Datenform abgesichert.
+  Live-Nebenbefund, absichtlich nicht angefasst: die Kompendium-
+  Quelldaten selbst sind an einigen Stellen inkonsistent (z.B.
+  "Shadowfell" vs. "shadowfell", "elemental plane of air" vs.
+  "elementalplane of air" — echter Tippfehler im Buch-Scan), was im
+  Habitat-Filter zu sichtbaren Fast-Duplikaten führt. Datenproblem der
+  Quelle, kein Modul-Bug.
 - Boss-ify-Feature (bossify-scaling.js, monster-scaling.js,
   bossify-dialog.js, scaling-settings-app.js): durchlief mehrere
   Iterationen. v1/v2 versuchten, eine Ziel-CR anhand einer aus dem
