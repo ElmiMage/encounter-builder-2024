@@ -69,6 +69,24 @@
   Zeichenfehler ohne generische Korrekturmöglichkeit; eine Hardcoded-
   Korrekturliste für einzelne bekannte Tippfehler wäre fragil und wurde
   bewusst nicht gebaut.
+  Vierter Nebenbefund, per Live-Screenshot vom Nutzer gemeldet und
+  behoben (2026-08): das Habitat-Dropdown zeigte zwei ununterscheidbare
+  "Any"-Einträge, und Klicken auf "Any Habitat" hatte sichtbar keine
+  Wirkung. Ursache: der literale Rohwert `"any"` ist ein echter,
+  buchlegitimer Habitat-Tag (bedeutet "in jedem Habitat anzutreffen",
+  z.B. Archmage) — und kollidiert exakt mit diesem Moduls eigenem
+  Platzhalter-Wert `value="any"` für "kein Filter aktiv". Zwei
+  `<option>` mit identischem `value` sind für den Browser ein einziger,
+  nicht unterscheidbarer Zustand. `getAvailableHabitats()` filtert den
+  Rohwert `"any"` jetzt aus der Dropdown-Liste heraus (live verifiziert:
+  32 statt 33 Werte, kein doppelter "Any"-Eintrag mehr). Zusätzlich war
+  das vorher auch eine echte Filter-Ungenauigkeit, nicht nur kosmetisch:
+  ein Monster mit Habitat `"any"` hätte bei einem konkreten Filter wie
+  "Mountain" fälschlich NICHT auftauchen dürfen, obwohl es laut Buch
+  überall vorkommt — die Filterprüfung in `encounter-builder-app.js`
+  behandelt `habitats.includes("any")` jetzt als Treffer für JEDEN
+  spezifischen Filter, nicht nur für den unfilterten Zustand (live
+  verifiziert: Archmage erscheint jetzt korrekt im "Mountain"-Filter).
 - Boss-ify-Feature (bossify-scaling.js, monster-scaling.js,
   bossify-dialog.js, scaling-settings-app.js): durchlief mehrere
   Iterationen. v1/v2 versuchten, eine Ziel-CR anhand einer aus dem

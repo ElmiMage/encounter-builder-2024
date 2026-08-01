@@ -272,9 +272,20 @@ export function getAvailableSizes(monsterIndex) {
   return values.map((value) => ({ value, label: SIZE_LABELS[value] ?? value }));
 }
 
-/** Unique, sorted habitats present in a monster index — empty if the field turns out not to exist in this dnd5e version. */
+/**
+ * Unique, sorted habitats present in a monster index — empty if the field
+ * turns out not to exist in this dnd5e version. Excludes the literal value
+ * "any" (a real, book-legitimate habitat tag some monsters have, meaning
+ * "found in any habitat" — e.g. Aberrant Cultist) because it's a raw string
+ * that's indistinguishable from this module's own "Any Habitat" placeholder
+ * option (also value "any", meaning "no filter selected"). Two <option>
+ * elements sharing one value are a single, confusing, ineffective slot in
+ * a <select> — plus a habitat-"any" monster should match every specific
+ * filter anyway (see the `habitat` check in #getMonstersExcluding), so it
+ * doesn't need its own filterable entry.
+ */
 export function getAvailableHabitats(monsterIndex) {
-  return [...new Set(monsterIndex.flatMap((m) => m.habitats))].sort();
+  return [...new Set(monsterIndex.flatMap((m) => m.habitats))].filter((h) => h !== "any").sort();
 }
 
 /**

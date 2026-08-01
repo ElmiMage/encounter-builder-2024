@@ -132,7 +132,13 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       cr: () => this.crFilter === "any" || m.cr === Number(this.crFilter),
       size: () => this.sizeFilter === "any" || m.size === this.sizeFilter,
       subtype: () => this.subtypeFilter === "any" || m.subtype === this.subtypeFilter,
-      habitat: () => this.habitatFilter === "any" || m.habitats.includes(this.habitatFilter),
+      // A monster whose own habitat data literally says "any" (book-legit
+      // tag meaning "found in any habitat", e.g. Aberrant Cultist) matches
+      // every specific habitat filter too, not just the unfiltered state —
+      // see the confidence note on getAvailableHabitats() for why that raw
+      // value is excluded from the dropdown itself.
+      habitat: () =>
+        this.habitatFilter === "any" || m.habitats.includes(this.habitatFilter) || m.habitats.includes("any"),
     };
     return Object.entries(checks).every(([key, fn]) => key === excludeKey || fn());
   }
@@ -223,7 +229,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     return items
       .map(
         (i) => `
-        <li class="loot-item-entry" data-action="viewLootItem" data-uuid="${this.#escapeHtml(i.uuid)}" title="Click to view description">
+        <li class="loot-item-entry" draggable="true" data-action="viewLootItem" data-uuid="${this.#escapeHtml(i.uuid)}" title="Click to view description, or drag onto the canvas/an actor sheet">
           <img src="${this.#escapeHtml(i.img)}" width="24" height="24" />
           <span class="monster-name" title="${this.#escapeHtml(i.name)}">${this.#escapeHtml(i.name)}</span>
           <span class="monster-cr">${this.#escapeHtml(humanizeToken(i.rarity))}</span>
@@ -460,18 +466,23 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     // ended up blocking Foundry's own action-click handling instead,
     // silently breaking data-action="toggleCompendiumGroup" entirely.
 
-    // Delegated (not per-row) so it keeps working after the search input's
-    // innerHTML-only patch of .monster-list rebuilds the <li> elements —
-    // this.element itself is untouched by that patch. Same drag payload
-    // shape Foundry's own compendium/sidebar entries use (Document#toDragData()),
-    // so the canvas's built-in Actor-drop-to-token handling picks it up with
-    // no custom drop code on our side; the resulting token is a plain,
-    // unscaled copy — Boss-ify/Minion-ify still only apply via the
-    // Encounter-tab list + Create Combat, not on a directly dragged token.
+    // Delegated (not per-row) so it keeps working after the search inputs'
+    // innerHTML-only patches of .monster-list/.loot-item-list rebuild their
+    // <li> elements — this.element itself is untouched by those patches.
+    // Same drag payload shape Foundry's own compendium/sidebar entries use
+    // (Document#toDragData()), so Foundry's built-in drop handling (tokens
+    // for Actors on the canvas; inventory entries for Items dropped on an
+    // actor sheet) picks it up with no custom drop code on our side. A
+    // dragged monster becomes a plain, unscaled token — Boss-ify/Minion-ify
+    // still only apply via the Encounter-tab list + Create Combat.
     this.element.addEventListener("dragstart", (ev) => {
-      const li = ev.target.closest(".monster-entry");
-      if (!li) return;
-      ev.dataTransfer.setData("text/plain", JSON.stringify({ type: "Actor", uuid: li.dataset.uuid }));
+      const monsterLi = ev.target.closest(".monster-entry");
+      const itemLi = ev.target.closest(".loot-item-entry");
+      if (monsterLi) {
+        ev.dataTransfer.setData("text/plain", JSON.stringify({ type: "Actor", uuid: monsterLi.dataset.uuid }));
+      } else if (itemLi) {
+        ev.dataTransfer.setData("text/plain", JSON.stringify({ type: "Item", uuid: itemLi.dataset.uuid }));
+      }
     });
 
     // Persist <details> open/closed state across re-renders — otherwise

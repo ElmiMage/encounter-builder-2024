@@ -247,7 +247,7 @@
       </div>
       <ul class="monster-list loot-item-list">
         {{#each lootItems}}
-          <li class="loot-item-entry" data-action="viewLootItem" data-uuid="{{this.uuid}}" title="Click to view description">
+          <li class="loot-item-entry" draggable="true" data-action="viewLootItem" data-uuid="{{this.uuid}}" title="Click to view description, or drag onto the canvas/an actor sheet">
             <img src="{{this.img}}" width="24" height="24" />
             <span class="monster-name" title="{{this.name}}">{{this.name}}</span>
             <span class="monster-cr">{{humanize this.rarity}}</span>
@@ -325,7 +325,7 @@
       </div>
       <ul class="monster-list loot-item-list">
         {{#each lootItems}}
-          <li class="loot-item-entry" data-action="viewLootItem" data-uuid="{{this.uuid}}" title="Click to view description">
+          <li class="loot-item-entry" draggable="true" data-action="viewLootItem" data-uuid="{{this.uuid}}" title="Click to view description, or drag onto the canvas/an actor sheet">
             <img src="{{this.img}}" width="24" height="24" />
             <span class="monster-name" title="{{this.name}}">{{this.name}}</span>
             <span class="monster-cr">{{humanize this.rarity}}</span>
