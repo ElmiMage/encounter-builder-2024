@@ -134,7 +134,7 @@
       </div>
       <ul class="monster-list">
         {{#each monsters}}
-          <li class="monster-entry" data-action="viewMonster" data-uuid="{{this.uuid}}" title="Click to view stat block">
+          <li class="monster-entry" draggable="true" data-action="viewMonster" data-uuid="{{this.uuid}}" title="Click to view stat block, or drag onto the canvas to place a token">
             <img src="{{this.img}}" width="24" height="24" />
             <span class="monster-name" title="{{this.name}}">{{this.name}}</span>
             <span class="monster-cr">CR {{this.cr}}</span>

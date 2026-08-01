@@ -45,6 +45,10 @@ with a fully editable preview before creating anything.
   monsters got no XP bump at all
 - Click a monster's name to open its stat block; a separate "+" button adds
   it — same pattern everywhere a monster or item is listed in this module
+- Drag a monster straight from the search list onto the canvas to place a
+  single, plain (un-scaled) token immediately — a quick-and-dirty
+  alternative to the encounter list for a one-off placement; Boss-ify/
+  Minion-ify still require adding it to the encounter list below instead
 - Click-to-place token spiral formation on the canvas
 - Creates a real Combat encounter when you're happy with the picks
 - Compendium selection is remembered per-user across sessions

@@ -206,7 +206,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     return monsters
       .map(
         (m) => `
-        <li class="monster-entry" data-action="viewMonster" data-uuid="${this.#escapeHtml(m.uuid)}" title="Click to view stat block">
+        <li class="monster-entry" draggable="true" data-action="viewMonster" data-uuid="${this.#escapeHtml(m.uuid)}" title="Click to view stat block, or drag onto the canvas to place a token">
           <img src="${this.#escapeHtml(m.img)}" width="24" height="24" />
           <span class="monster-name" title="${this.#escapeHtml(m.name)}">${this.#escapeHtml(m.name)}</span>
           <span class="monster-cr">CR ${this.#escapeHtml(m.cr)}</span>
@@ -459,6 +459,20 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     // adding our own stopPropagation/preventDefault here previously
     // ended up blocking Foundry's own action-click handling instead,
     // silently breaking data-action="toggleCompendiumGroup" entirely.
+
+    // Delegated (not per-row) so it keeps working after the search input's
+    // innerHTML-only patch of .monster-list rebuilds the <li> elements —
+    // this.element itself is untouched by that patch. Same drag payload
+    // shape Foundry's own compendium/sidebar entries use (Document#toDragData()),
+    // so the canvas's built-in Actor-drop-to-token handling picks it up with
+    // no custom drop code on our side; the resulting token is a plain,
+    // unscaled copy — Boss-ify/Minion-ify still only apply via the
+    // Encounter-tab list + Create Combat, not on a directly dragged token.
+    this.element.addEventListener("dragstart", (ev) => {
+      const li = ev.target.closest(".monster-entry");
+      if (!li) return;
+      ev.dataTransfer.setData("text/plain", JSON.stringify({ type: "Actor", uuid: li.dataset.uuid }));
+    });
 
     // Persist <details> open/closed state across re-renders — otherwise
     // every checkbox click (which triggers a full render) would snap

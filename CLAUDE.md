@@ -215,3 +215,28 @@
   und wurden per Code-Review auf denselben Fehler geprüft — kein
   Analogon gefunden. `scaling-settings-app.js` (Settings-Editor) und die
   komplette Minion-ify-UI-Klickkette blieben in dieser Runde ungetestet.
+- Drag & Drop einzelner Monster aus der Encounter-Tab-Suchliste direkt
+  auf die Canvas (seit 2026-08, auf Nutzerwunsch): `draggable="true"` auf
+  dem `.monster-entry`-`<li>` (Template UND die JS-Rebuild-Variante in
+  `#buildMonsterListHtml`, die bei jedem Tastendruck im Suchfeld per
+  `.innerHTML`-Patch neu aufgebaut wird) plus ein in `_onRender`
+  delegierter (nicht pro-Zeile gebundener) `dragstart`-Listener auf
+  `this.element` — überlebt dadurch den Suchfeld-Patch, ohne dass der
+  Listener neu gebunden werden müsste. Payload-Form (`{type:"Actor",
+  uuid}`) stammt 1:1 aus Foundrys eigener `Document#toDragData()`-
+  Konvention (im Core-Bundle nachgelesen), daher übernimmt Foundrys
+  eingebautes Canvas-Drop-Handling (`Canvas#_onDrop` →
+  `TokenLayer#_onDropActorData`) die Token-Erzeugung komplett selbst,
+  kein eigener Drop-Handler nötig. Live verifiziert: echter Foundry-
+  Core-Handler hängt per natives `element.addEventListener("drop", …)`
+  direkt am PIXI-Canvas-DOM-Element (`canvas.app.view`), NICHT an PIXIs
+  Pointer-Event-System — anders als der `pointerdown`-Fall oben ließ
+  sich das Drop-Verhalten deshalb erfolgreich über ein echtes
+  synthetisches `DragEvent("drop", {dataTransfer, clientX, clientY})`
+  direkt auf `canvas.app.view` testen (inkl. vorherigem `"dragstart"` auf
+  der Zeile selbst, um das reale Payload zu erzeugen) und erzeugte
+  korrekt einen echten, unskalierten Token samt Actor. Bewusst
+  eingeschränkter Scope (Nutzerwunsch): kein Boss-ify/Minion-ify beim
+  Drag — das bleibt dem bestehenden "Zur Encounter-Liste hinzufügen +
+  Create Combat"-Pfad vorbehalten. Item-Drag aus dem Loot-Tab wäre
+  identisch umsetzbar, war aber nicht Teil dieses Auftrags.
