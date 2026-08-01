@@ -11,7 +11,7 @@ with a fully editable preview before creating anything.
 
 **Encounter tab**
 
-<img width="952" height="770" alt="Encounter Builder" src="https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@master/screenshots/encounter-tab.jpg" />
+<img width="952" height="770" alt="Encounter Builder" src="https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.3/screenshots/encounter-tab.jpg" />
 
 - XP budget per 2024 DMG rules (Low/Moderate/High, no group multipliers)
 - Browse monsters from ANY loaded Actor compendium (SRD + your own homebrew)
@@ -51,7 +51,7 @@ with a fully editable preview before creating anything.
 
 **Loot tab — Individual Treasure**
 
-<img width="952" height="774" alt="Encounter Builder Loot" src="https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@master/screenshots/loot-tab.jpg" />
+<img width="952" height="774" alt="Encounter Builder Loot" src="https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.3/screenshots/loot-tab.jpg" />
 
 - The 2024 DMG's smaller, separate "Individual Treasure" table: the
   incidental coin a single non-hoarding monster carries, as opposed to a
@@ -64,7 +64,7 @@ with a fully editable preview before creating anything.
 
 **Treasure Hoard tab**
 
-<img width="952" height="775" alt="Encounter Builder Loot Hoard" src="https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@master/screenshots/treasure-hoard-tab.jpg" />
+<img width="952" height="775" alt="Encounter Builder Loot Hoard" src="https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.3/screenshots/treasure-hoard-tab.jpg" />
 
 - The 2024 DMG's detailed Treasure Hoard tables — coins, gems/art, and
   resolved magic items with real names, not a blind roll
