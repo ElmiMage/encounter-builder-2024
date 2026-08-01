@@ -2,7 +2,7 @@
   "id": "encounter-builder-2024",
   "title": "Encounter Builder (2024 Rules)",
   "description": "A modern, actively maintained encounter builder for D&D 5e (2024 rules) in Foundry VTT. Calculates XP budgets using the 2024 Dungeon Master's Guide system (Low/Moderate/High, no group multipliers), lets you pull monsters from any loaded Actor compendium (including your own homebrew), and generates DMG-accurate loot — a per-monster Individual Treasure purse plus a full editable Treasure Hoard, with an optional homebrew smoothed-by-level table alongside the RAW tiers.",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "license": "LICENSE",
   "compatibility": {
     "minimum": "12",
@@ -31,17 +31,17 @@
   "media": [
     {
       "type": "screenshot",
-      "url": "https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.4/screenshots/encounter-tab.jpg",
+      "url": "https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.5/screenshots/encounter-tab.jpg",
       "caption": "Encounter tab"
     },
     {
       "type": "screenshot",
-      "url": "https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.4/screenshots/loot-tab.jpg",
+      "url": "https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.5/screenshots/loot-tab.jpg",
       "caption": "Loot tab — Individual Treasure"
     },
     {
       "type": "screenshot",
-      "url": "https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.4/screenshots/treasure-hoard-tab.jpg",
+      "url": "https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.5/screenshots/treasure-hoard-tab.jpg",
       "caption": "Treasure Hoard tab"
     }
   ],
