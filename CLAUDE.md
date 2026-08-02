@@ -803,3 +803,59 @@
   nach Reload (Directory-Junction, F5-Äquivalent): echtes Mausrad-
   Scrollen im Hilfe-Dialog funktioniert jetzt, alle Abschnitte inkl.
   "Close"-Button erreichbar, sichtbare Scrollbar am rechten Rand.
+- Item-Customize-Dialog erweitert um Attunement, überschreibbare Rarity,
+  Freitext-Beschreibung (seit 2026-08, auf Nutzerwunsch):
+  1. **Attunement-Checkbox** ("Requires Attunement"): `system.attunement`
+     ist ein reines String-Feld, KEIN Boolean — live gegen die installierte
+     dnd5e-Quelle verifiziert (`dnd5e.equipment24`): ein echtes 2024 "Ring
+     of Protection" trägt `"required"`, das 2024 "Weapon, +1, +2, or +3"-
+     Template-Item (kein Attunement nötig) trägt `""`, nicht `null`/
+     `"none"`. `CONFIG.DND5E.attunementTypes` kennt nur `"required"` und
+     `"optional"` als echte Werte — dieses Feature schreibt bewusst nur
+     `"required"` (kein UI für "optional", da nicht angefragt). Checkbox
+     aus lässt das Attunement eines Items, das schon von sich aus welches
+     braucht, unangetastet (kein Zurücksetzen auf "nicht nötig"). Zählt
+     zusätzlich zur bestehenden Bonus/Extra-Damage/Extra-Resistance-
+     Bedingung für das `"mgc"`-Property-Flag, da ein Attunement-Erfordernis
+     in 5e nur bei Magic Items vorkommt.
+  2. **Rarity überschreibbar**: neues `<select name="rarityOverride">`
+     im Dialog, vorbelegt mit dem laufenden `suggestRarity()`-Ergebnis.
+     State-Felder `rarityOverride`/`rarityTouched` analog zu
+     `customName`/`customNameTouched`, aber bewusst NICHT imperativ
+     nachgeführt wie `#applyNameSuggestion()` — da ein `<select>` (anders
+     als ein Text-Input) keinen "laufende Texteingabe"-Zustand hat, der
+     durch einen Reactive-Rebuild verloren gehen könnte, wird der
+     Anzeigewert stattdessen bei jedem Render frisch berechnet
+     (`this.rarityTouched ? this.rarityOverride : this.#autoRarity()`) —
+     verhält sich identisch zum imperativen Original-Muster, ist aber
+     einfacher. `#onApply()` übernimmt exakt die vom Nutzer vorgegebene
+     Formel `rarityOverride ?? suggestRarity(...)`. Ein reines
+     Rarity-Override ganz ohne sonstige Änderung zählt jetzt ebenfalls als
+     `hasCustomization` (sonst wäre die manuelle Wahl beim Schließen des
+     Dialogs stillschweigend verworfen worden, da `customization` nur
+     gespeichert wird, wenn irgendein Trigger greift).
+  3. **Freitext-Beschreibung**: neues `<textarea name="customDescription">`
+     zwischen Custom Name und Attunement-Checkbox. Ersetzt
+     `system.description.value` komplett (nicht angehängt) — vermeidet,
+     dass generischer Kompendium-Text und Custom-Flavor sich vermischen.
+     Leer gelassen: Basis-Beschreibung bleibt unangetastet. Zählt NICHT
+     zum `"mgc"`-Flag (reiner Fluff-Text macht ein Item nicht magisch).
+  Alle drei Felder in `hasCustomization` (`#onApply()`) mit aufgenommen,
+  damit z.B. eine reine Attunement-Änderung ohne Bonus ebenfalls den
+  ✨-Marker in der Plan-Liste bekommt. Pure Transformationslogik in
+  `applyItemCustomization()` (Attunement, Beschreibung) mit 9
+  Hand-Assertions gegen `node --check` abgesichert (kein RNG beteiligt).
+  Live end-to-end verifiziert: "Frost Brand Scimitar" mit Custom
+  Description, Attunement an, Magic Bonus +2, Extra Damage (Acid)
+  angepasst — Rarity-Dropdown blieb korrekt bei "Very Rare" (Never-
+  Downgrade-Regel, das Basisitem ist selbst schon so hoch), danach manuell
+  auf "Legendary" gesetzt und per weiterer Feldänderung (Extra Damage
+  Type toggeln, löst Re-Render aus) bestätigt, dass die manuelle Wahl
+  NICHT von der Auto-Suggestion überschrieben wird. Nach "Place Loot":
+  echtes Item "Acid Frost Brand Scimitar +2" mit `system.attunement:
+  "required"`, `system.rarity: "legendary"`, `system.magicalBonus: "2"`,
+  `system.description.value` korrekt ersetzt, `"mgc"` im
+  `system.properties`-Array — alle Felder exakt wie erwartet. Test-Actor
+  danach wieder gelöscht (samt Token), andere/ältere Leichen im
+  "Encounter Builder Loot"-Ordner aus früheren Sessions bewusst
+  unangetastet gelassen.

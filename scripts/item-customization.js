@@ -28,9 +28,24 @@
  *   against real resistance-granting items (Ring of Fire Resistance, the
  *   2024 "Armor of Resistance" family), which grant resistance exactly
  *   this way rather than through any item-level "resistance" field.
+ * - Attunement: `system.attunement` is a plain string field, NOT a
+ *   boolean — verified against the live installed dnd5e system (a real
+ *   2024 "Ring of Protection" reads `"required"`; the 2024 "Weapon, +1,
+ *   +2, or +3" template item, which needs none, reads `""`, not `null`/
+ *   `"none"`). `CONFIG.DND5E.attunementTypes` only defines `"required"`
+ *   and `"optional"` as real choices — this feature only ever writes
+ *   `"required"` (optional attunement isn't exposed here, no user request
+ *   for it), and only when explicitly checked; unchecked leaves the base
+ *   item's own attunement requirement alone rather than clearing it.
+ * - Custom description: overwrites `system.description.value` wholesale,
+ *   not appended — a half-generic/half-custom description read worse
+ *   than either alone, so the GM either writes the whole thing or leaves
+ *   the base item's own description untouched.
  *
- * The `"mgc"` (magical) properties flag is set whenever any of the above
- * applies, matching how real magic items are flagged.
+ * The `"mgc"` (magical) properties flag is set whenever a magic bonus,
+ * extra damage/resistance, or attunement requirement applies, matching
+ * how real magic items are flagged — a custom description alone doesn't
+ * imply magical (reflavoring fluff text isn't the same claim).
  */
 
 import { categorizeItem } from "./item-categories.js";
@@ -129,7 +144,7 @@ export function suggestRarity(currentRarity, { magicalBonus = 0, extraDamage = f
 
 /**
  * @param {object} itemData - plain item data (e.g. from Item#toObject())
- * @param {{name?:string, customization:{magicalBonus?:number, extraDamage?:{number:number, denomination:number, type:string}|null, extraResistance?:string|null, rarity?:string}}} planItem
+ * @param {{name?:string, customization:{magicalBonus?:number, extraDamage?:{number:number, denomination:number, type:string}|null, extraResistance?:string|null, requiresAttunement?:boolean, description?:string|null, rarity?:string}}} planItem
  * @returns {object} a new, modified item data object — itemData itself is untouched
  */
 export function applyItemCustomization(itemData, planItem) {
@@ -139,6 +154,11 @@ export function applyItemCustomization(itemData, planItem) {
   const data = JSON.parse(JSON.stringify(itemData));
 
   if (planItem.name) data.name = planItem.name;
+
+  if (customization.description) {
+    data.system.description ??= {};
+    data.system.description.value = customization.description;
+  }
 
   const category = categorizeItem(data.type, data.system?.type?.value);
   const bonus = Number(customization.magicalBonus) || 0;
@@ -152,6 +172,10 @@ export function applyItemCustomization(itemData, planItem) {
     } else {
       data.system.magicalBonus = String(bonus);
     }
+  }
+
+  if (customization.requiresAttunement) {
+    data.system.attunement = "required";
   }
 
   if (extraDamage && extraDamage.number > 0 && extraDamage.denomination && extraDamage.type) {
@@ -180,7 +204,7 @@ export function applyItemCustomization(itemData, planItem) {
     });
   }
 
-  if (bonus > 0 || extraDamage || extraResistance) {
+  if (bonus > 0 || extraDamage || extraResistance || customization.requiresAttunement) {
     const properties = new Set(data.system.properties ?? []);
     properties.add("mgc");
     data.system.properties = [...properties];

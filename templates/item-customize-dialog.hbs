@@ -8,6 +8,17 @@
     <input type="text" name="customName" placeholder="{{itemName}}" value="{{customName}}" />
   </label>
 
+  <label class="item-customize-row item-customize-row-column">
+    Custom Description
+    <textarea name="customDescription" rows="3">{{customDescription}}</textarea>
+  </label>
+  <p class="item-customize-hint">Optional — leave empty to keep the base item's description.</p>
+
+  <label class="item-customize-row item-customize-checkbox">
+    <input type="checkbox" name="requiresAttunement" {{#if requiresAttunement}}checked{{/if}} />
+    Requires Attunement
+  </label>
+
   {{#if showBonusField}}
     <label class="item-customize-row">
       Magic Bonus
@@ -78,8 +89,18 @@
     {{/unless}}
   {{/unless}}
 
+  <label class="item-customize-row">
+    Rarity
+    <select name="rarityOverride">
+      {{#each rarityOptions}}
+        <option value="{{this}}" {{#if (eq this ../displayedRarity)}}selected{{/if}}>{{humanize this}}</option>
+      {{/each}}
+    </select>
+  </label>
+  <p class="item-customize-hint">Auto-suggested from the bonus/extras picked above — pick a different one here to override it.</p>
+
   <p class="item-customize-hint">
-    Homebrew, not an official DMG item — a flat house-ruled magic bonus and/or bonus damage/resistance type layered onto this specific find. If more than one copy is in the plan, only one copy becomes this customized item; the rest stay as-is.
+    Homebrew, not an official DMG item — a house-ruled name, description, magic bonus, attunement, and/or bonus damage/resistance type layered onto this specific find. If more than one copy is in the plan, only one copy becomes this customized item; the rest stay as-is.
   </p>
 
   <div class="item-customize-buttons">

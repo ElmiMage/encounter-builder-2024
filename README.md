@@ -73,9 +73,10 @@ with a fully editable preview before creating anything.
 - Filter the item browser by DMG-style category (Weapon, Armor, Ring, Rod,
   Wand, Wondrous Item, and more) — also available on the Treasure Hoard tab
 - **Customize…**: turn any weapon or armor entry (rolled or manually
-  added) into a named magic find before it's materialized — custom name,
-  flat magic bonus, an extra damage type (weapons) or resistance type
-  (armor), and an auto-suggested rarity that scales with what you picked.
+  added) into a named magic find before it's materialized — custom name
+  and description, a flat magic bonus, an extra damage type (weapons) or
+  resistance type (armor), an attunement requirement, and a rarity that
+  auto-suggests from what you picked but can be manually overridden.
   Homebrew, not an official DMG item generator — clearly flagged as such
   in the dialog
 

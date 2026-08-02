@@ -680,6 +680,22 @@
   justify-content: flex-start;
 }
 
+/* Custom Description: label text above the field instead of beside it
+   (the default .item-customize-row layout), since a multi-line textarea
+   reads awkwardly squeezed next to inline label text the way a <select>
+   or single-line <input> doesn't. */
+#encounter-builder-2024-item-customize-dialog .item-customize-row-column {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.25rem;
+}
+
+#encounter-builder-2024-item-customize-dialog .item-customize-row-column textarea {
+  width: 100%;
+  resize: vertical;
+  font-family: inherit;
+}
+
 #encounter-builder-2024-item-customize-dialog .item-customize-checkbox input {
   flex: 0 0 auto;
 }

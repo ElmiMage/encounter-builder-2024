@@ -1,10 +1,12 @@
 /**
  * "Customize Item" dialog — lets the GM turn a mundane/generic loot-list
- * item into this encounter's specific magic find: a custom name, a flat
- * magic bonus (system.magicalBonus / system.armor.magicalBonus, same
- * fields the 2024 template magic items use), an extra damage type on top
- * of a weapon's own damage, or — for armor — an extra resistance type.
- * Homebrew, not a DMG table lookup — see item-customization.js.
+ * item into this encounter's specific magic find: a custom name and/or
+ * description, a flat magic bonus (system.magicalBonus /
+ * system.armor.magicalBonus, same fields the 2024 template magic items
+ * use), an extra damage type on top of a weapon's own damage, an extra
+ * resistance type for armor, an attunement requirement, and an
+ * auto-suggested-but-overridable rarity. Homebrew, not a DMG table
+ * lookup — see item-customization.js.
  *
  * Loads the real compendium Item once (fromUuid) so the dialog knows
  * whether it's a weapon or armor (categorizeItem(), same categorization
@@ -30,6 +32,7 @@
 
 import { EXTRA_DAMAGE_TYPES, EXTRA_RESISTANCE_TYPES, DAMAGE_DENOMINATIONS, suggestItemName, suggestRarity } from "./item-customization.js";
 import { categorizeItem } from "./item-categories.js";
+import { RARITY_TIERS } from "./treasure-tables.js";
 
 const { HandlebarsApplicationMixin, ApplicationV2 } = foundry.applications.api;
 
@@ -55,6 +58,8 @@ export class ItemCustomizeDialog extends HandlebarsApplicationMixin(ApplicationV
     // customization.name counts as manually chosen; re-opening a fresh
     // entry with an empty name starts in auto mode.
     this.customNameTouched = !!existing?.name;
+    this.customDescription = existing?.description ?? "";
+    this.requiresAttunement = !!existing?.requiresAttunement;
     this.magicalBonus = existing?.magicalBonus ?? 0;
     this.extraDamageEnabled = !!existing?.extraDamage;
     this.extraDamageNumber = existing?.extraDamage?.number ?? 1;
@@ -62,6 +67,15 @@ export class ItemCustomizeDialog extends HandlebarsApplicationMixin(ApplicationV
     this.extraDamageType = existing?.extraDamage?.type ?? "acid";
     this.extraResistanceEnabled = !!existing?.extraResistance;
     this.extraResistanceType = existing?.extraResistance ?? "fire";
+    // Rarity dropdown: null = keep following the live auto-suggestion
+    // (see #autoRarity), same "auto until touched" idea as the name
+    // field above, but tracked as an explicit gate flag rather than
+    // "field is non-empty" (a <select> always has SOME value selected,
+    // so emptiness can't double as the signal the way it does for the
+    // free-text name field). A previously-saved customization.rarity
+    // counts as manually chosen, exactly like customNameTouched above.
+    this.rarityOverride = existing?.rarity ?? null;
+    this.rarityTouched = !!existing?.rarity;
   }
 
   static DEFAULT_OPTIONS = {
@@ -122,6 +136,16 @@ export class ItemCustomizeDialog extends HandlebarsApplicationMixin(ApplicationV
     return this.magicalBonus > 0 ? this.magicalBonus : this.#existingBonus(this.#category());
   }
 
+  /** The rarity suggestRarity() would compute from the currently-selected bonus/extras — recomputed fresh on every render rather than cached, since (unlike the free-text name field) a <select>'s displayed value has no "in-progress typing" to protect, so there's no need to mirror #applyNameSuggestion()'s imperative mutate-on-change style here. */
+  #autoRarity() {
+    return suggestRarity(this.entry.rarity, {
+      magicalBonus: this.#effectiveBonus(),
+      extraDamage: this.extraDamageEnabled,
+      extraResistance: this.extraResistanceEnabled,
+      category: this.#category(),
+    });
+  }
+
   /**
    * Re-suggests the name from the TRUE base item (this.#sourceItem — the
    * pristine compendium source, never a previously-customized name, so
@@ -161,6 +185,13 @@ export class ItemCustomizeDialog extends HandlebarsApplicationMixin(ApplicationV
     return {
       itemName: this.entry.name,
       customName: this.customName,
+      customDescription: this.customDescription,
+      requiresAttunement: this.requiresAttunement,
+      rarityOptions: RARITY_TIERS,
+      // Live preview of what will actually be saved (see #onApply): the
+      // GM's manual pick once the dropdown has been touched, otherwise
+      // whatever the current bonus/extras selection suggests.
+      displayedRarity: this.rarityTouched ? this.rarityOverride : this.#autoRarity(),
       magicalBonus: this.magicalBonus,
       // Picking +1 on an item that's already a +2 would silently
       // DOWNGRADE it (applyItemCustomization overwrites, it doesn't add
@@ -231,11 +262,23 @@ export class ItemCustomizeDialog extends HandlebarsApplicationMixin(ApplicationV
       this.#applyNameSuggestion();
       this.render();
     });
+    this.element.querySelector('[name="customDescription"]')?.addEventListener("input", (ev) => {
+      this.customDescription = ev.target.value;
+    });
+    this.element.querySelector('[name="requiresAttunement"]')?.addEventListener("change", (ev) => {
+      this.requiresAttunement = ev.target.checked;
+    });
+    this.element.querySelector('[name="rarityOverride"]')?.addEventListener("change", (ev) => {
+      this.rarityOverride = ev.target.value;
+      this.rarityTouched = true;
+    });
   }
 
   static #onApply(event, target) {
     const customization = {
       name: this.customName.trim() || null,
+      description: this.customDescription.trim() || null,
+      requiresAttunement: this.requiresAttunement,
       magicalBonus: this.magicalBonus > 0 ? this.magicalBonus : 0,
       extraDamage: this.extraDamageEnabled
         ? { number: this.extraDamageNumber, denomination: this.extraDamageDenomination, type: this.extraDamageType }
@@ -243,19 +286,28 @@ export class ItemCustomizeDialog extends HandlebarsApplicationMixin(ApplicationV
       extraResistance: this.extraResistanceEnabled ? this.extraResistanceType : null,
     };
     const hasCustomization =
-      !!customization.name || customization.magicalBonus > 0 || !!customization.extraDamage || !!customization.extraResistance;
+      !!customization.name ||
+      !!customization.description ||
+      customization.requiresAttunement ||
+      customization.magicalBonus > 0 ||
+      !!customization.extraDamage ||
+      !!customization.extraResistance ||
+      !!this.rarityOverride;
 
-    // Rarity scales with the EFFECTIVE bonus (see #effectiveBonus), same
-    // reasoning as the name suggestion — computed here (not just in
+    // Rarity: the GM's manual pick (rarityOverride) wins outright if set;
+    // otherwise falls back to the same auto-suggestion the live preview
+    // already showed (see #autoRarity) — computed here too (not just in
     // applyItemCustomization at "Place Loot" time) so the plan list shows
     // the new rarity immediately, matching how the name already updates.
     if (hasCustomization) {
-      customization.rarity = suggestRarity(this.entry.rarity, {
-        magicalBonus: this.#effectiveBonus(),
-        extraDamage: !!customization.extraDamage,
-        extraResistance: !!customization.extraResistance,
-        category: this.#category(),
-      });
+      customization.rarity =
+        this.rarityOverride ??
+        suggestRarity(this.entry.rarity, {
+          magicalBonus: this.#effectiveBonus(),
+          extraDamage: !!customization.extraDamage,
+          extraResistance: !!customization.extraResistance,
+          category: this.#category(),
+        });
     }
 
     const effectiveName = customization.name || this.#sourceItem?.name || this.entry.name;
