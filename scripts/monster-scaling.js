@@ -248,9 +248,16 @@ export async function bossifyActor(actor, tier, options = {}) {
     const { itemUpdates, itemBackups } = buildItemUpdates(actor, applyDamageDice ? scaled.damageRatio : 1);
 
     // Snapshot BEFORE mutating, so a Revert is available even if something
-    // below throws partway through.
+    // below throws partway through. tier + the four apply* flags together
+    // fully determine the result, so encounter-builder-app.js's Create
+    // Combat Actor-reuse lookup matches on all five to avoid reusing e.g.
+    // an AC-only Deadly actor for what should be an AC+HP Deadly actor.
     await actor.setFlag(MODULE_ID, "bossifySnapshot", {
       tier,
+      applyAC,
+      applyHP,
+      applyAbilities,
+      applyDamageDice,
       appliedAt: Date.now(),
       actor: { ac: snapshot.ac, hp: snapshot.hp, abilities: snapshot.abilities },
       items: itemBackups,

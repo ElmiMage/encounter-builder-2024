@@ -5,10 +5,13 @@ import { computeSpiralPositions, clampToSceneBounds } from "./token-placement.js
 import { autoFillEncounter, autoFillBossEncounter } from "./auto-fill.js";
 import { pickCanvasPoint } from "./canvas-picker.js";
 import { createLootActor, suggestLootPlan, suggestSmoothedLootPlan, rerollMagicItems, listItemCompendiums, loadItemIndex, getAvailableRarities, RARITY_TIERS } from "./loot-generator.js";
+import { getAvailableCategories } from "./item-categories.js";
 import { rollIndividualTreasureForEncounter } from "./individual-treasure-tables.js";
 import { humanizeToken, formatCR } from "./format.js";
 import { bossifyActor, revertBossify, minionifyActor, revertMinionify, scaleEncounterHp } from "./monster-scaling.js";
+import { BOSSIFY_TIERS } from "./bossify-scaling.js";
 import { BossifyDialog } from "./bossify-dialog.js";
+import { ItemCustomizeDialog } from "./item-customize-dialog.js";
 import { resolveMinionXpMultiplier } from "./minion-scaling.js";
 
 const { HandlebarsApplicationMixin, ApplicationV2 } = foundry.applications.api;
@@ -41,10 +44,13 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       createCombat: EncounterBuilderApp.#onCreateCombat,
       autoFill: EncounterBuilderApp.#onAutoFill,
       reset: EncounterBuilderApp.#onReset,
+      savePreset: EncounterBuilderApp.#onSavePreset,
+      loadPreset: EncounterBuilderApp.#onLoadPreset,
+      deletePreset: EncounterBuilderApp.#onDeletePreset,
       generateLoot: EncounterBuilderApp.#onGenerateLoot,
       switchTab: EncounterBuilderApp.#onSwitchTab,
-      rollLoot: EncounterBuilderApp.#onRollLoot,
-      rerollLoot: EncounterBuilderApp.#onRerollLoot,
+      rollHoard: EncounterBuilderApp.#onRollHoard,
+      rerollHoard: EncounterBuilderApp.#onRerollHoard,
       rollIndividualTreasure: EncounterBuilderApp.#onRollIndividualTreasure,
       toggleLootCompendium: EncounterBuilderApp.#onToggleLootCompendium,
       toggleLootGroup: EncounterBuilderApp.#onToggleLootGroup,
@@ -52,6 +58,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       removeLootItem: EncounterBuilderApp.#onRemoveLootItem,
       deleteLootItem: EncounterBuilderApp.#onDeleteLootItem,
       viewLootItem: EncounterBuilderApp.#onViewLootItem,
+      customizeLootItem: EncounterBuilderApp.#onCustomizeLootItem,
     },
   };
 
@@ -104,7 +111,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
   activeTab = "encounter";
   /** @type {object|null} shape from suggestLootPlan(), edited in place by the UI */
-  lootPlan = null;
+  hoardPlan = null;
   // "auto" = follow Party Level via the RAW tier tables (current/default
   // behavior); a string "1".."20" = homebrew smoothed per-level table
   // (see smoothed-loot-tables.js), overriding Party Level for the Hoard
@@ -119,8 +126,10 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   // switching to the other tab, which reads as "connected" fields.
   hoardSearchTerm = "";
   hoardRarityFilter = "any";
+  hoardCategoryFilter = "any";
   individualSearchTerm = "";
   individualRarityFilter = "any";
+  individualCategoryFilter = "any";
 
   /** @type {{coins:{cp:number,sp:number,ep:number,gp:number,pp:number}, rolledCount:number}|null} last Individual Treasure roll for the "loot" tab */
   individualTreasureResult = null;
@@ -189,15 +198,43 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     return entry.monster.xp ?? 0;
   }
 
-  /** Item search/rarity filter state is kept separate per tab (hoardSearchTerm/hoardRarityFilter vs individualSearchTerm/individualRarityFilter) so typing in one tab's search box doesn't leak into the other's — this reads whichever pair belongs to the currently active tab. */
+  /** Item search/rarity/category filter state is kept separate per tab (hoardSearchTerm/hoardRarityFilter/hoardCategoryFilter vs individualSearchTerm/individualRarityFilter/individualCategoryFilter) so typing/filtering in one tab doesn't leak into the other's — this reads whichever trio belongs to the currently active tab. */
   #getFilteredLootItems() {
     const searchTerm = this.activeTab === "loot" ? this.individualSearchTerm : this.hoardSearchTerm;
     const rarityFilter = this.activeTab === "loot" ? this.individualRarityFilter : this.hoardRarityFilter;
+    const categoryFilter = this.activeTab === "loot" ? this.individualCategoryFilter : this.hoardCategoryFilter;
     return this.lootItemIndex.filter((i) => {
       const matchesSearch = i.name.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesRarity = rarityFilter === "any" || i.rarity === rarityFilter;
-      return matchesSearch && matchesRarity;
+      const matchesCategory = categoryFilter === "any" || i.category === categoryFilter;
+      return matchesSearch && matchesRarity && matchesCategory;
     });
+  }
+
+  /**
+   * Prepares loot/hoard plan items for the template:
+   * - Guarantees a usable `key` for the row's +/−/×/Customize buttons,
+   *   even if the underlying entry itself doesn't carry one — items
+   *   rolled via resolveMagicItems() now always get one (see
+   *   loot-generator.js), but entries loaded from a preset saved before
+   *   that existed still won't. Without this, `{{this.key}}` renders as
+   *   an empty string, which never matches any entry's `(i.key ??
+   *   i.uuid)` in the action handlers below — every button on that row
+   *   would silently no-op.
+   * - Adds `canCustomize`: the "Customize…" button only makes sense for
+   *   Weapon/Armor entries (Magic Bonus is the only field that applies to
+   *   anything else, and it doesn't mechanically do anything off those
+   *   two categories — see item-customization.js). Entries without a
+   *   `category` (old presets/manual adds from before that field existed)
+   *   default to showing the button rather than hiding a feature they
+   *   might still legitimately want.
+   */
+  #withDisplayFields(items) {
+    return (items ?? []).map((i) => ({
+      ...i,
+      key: i.key || i.uuid,
+      canCustomize: !i.category || i.category === "Weapon" || i.category === "Armor",
+    }));
   }
 
   /** Escapes text inserted via innerHTML, since monster names/sources come from compendium data we don't fully control (homebrew, etc.). */
@@ -248,6 +285,13 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
    * to nag if the GM hasn't set up a Party actor); vocal when triggered
    * explicitly via the "Sync from Party" button, so a no-op has visible
    * feedback instead of looking like the button did nothing.
+   *
+   * Prefers whoever actually has a token on the active scene over the full
+   * roster — a Party actor can list every character in the campaign, but a
+   * GM playing tonight with 3 of their 6 usual players wants the budget to
+   * reflect who showed up, not who's in the group sheet. Falls back to the
+   * full roster whenever no roster member has a token on the scene (e.g.
+   * planning before placing tokens, or playing theater-of-the-mind).
    */
   #syncFromPartyActor({ silent = false } = {}) {
     const party = game.actors.party;
@@ -260,9 +304,17 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       if (!silent) ui.notifications.warn(`Your Party actor ("${party.name}") has no player characters in it yet.`);
       return;
     }
-    this.partyLevel = party.system.level;
-    this.partySize = pcs.length;
-    if (!silent) ui.notifications.info(`Synced from Party "${party.name}": level ${this.partyLevel}, ${this.partySize} character(s).`);
+
+    const presentActorIds = new Set((canvas?.scene?.tokens ?? []).map((t) => t.actorId));
+    const presentPcs = pcs.filter((pc) => presentActorIds.has(pc.id));
+    const activePcs = presentPcs.length > 0 ? presentPcs : pcs;
+
+    this.partyLevel = Math.round(activePcs.reduce((sum, pc) => sum + pc.system.details.level, 0) / activePcs.length);
+    this.partySize = activePcs.length;
+    if (!silent) {
+      const scope = presentPcs.length > 0 ? `${activePcs.length} character(s) on the scene` : `${activePcs.length} character(s), full roster`;
+      ui.notifications.info(`Synced from Party "${party.name}": level ${this.partyLevel}, ${scope}.`);
+    }
   }
 
   async _prepareContext() {
@@ -306,10 +358,11 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     const filtered = this.#getFilteredMonsters();
 
     const availableLootRarities = getAvailableRarities(this.lootItemIndex);
+    const availableLootCategories = getAvailableCategories(this.lootItemIndex);
     const filteredLootItems = this.#getFilteredLootItems();
     const rarityRows = RARITY_TIERS.map((rarity) => ({
       rarity,
-      count: this.lootPlan?.rarityCounts?.[rarity] ?? 0,
+      count: this.hoardPlan?.rarityCounts?.[rarity] ?? 0,
     }));
 
     return {
@@ -324,29 +377,32 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       })),
       lootCompendiumTreeOpen: this.lootCompendiumTreeOpen,
       highestCr: this.#getHighestCr(),
-      lootTierBasis: this.partyLevel,
+      hoardTierBasis: this.partyLevel,
       hoardLootBasis: this.hoardLootBasis,
       lootLevelOptions: Array.from({ length: 20 }, (_, i) => String(i + 1)),
-      lootPlan: this.lootPlan,
+      hoardPlan: this.hoardPlan,
       // Fallbacks so the Hoard tab's search/coins/gems/items UI can render
       // (and be edited) even before the GM has rolled anything, mirroring
       // the Loot tab's individualTreasure* fallbacks.
-      lootPlanCoins: this.lootPlan?.coins ?? { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
-      lootPlanGemsOrArt: this.lootPlan?.gemsOrArt ?? { type: "none", count: 0, unitValue: 0 },
-      lootPlanItems: this.lootPlan?.items ?? [],
+      hoardPlanCoins: this.hoardPlan?.coins ?? { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
+      hoardPlanGemsOrArt: this.hoardPlan?.gemsOrArt ?? { type: "none", count: 0, unitValue: 0 },
+      hoardPlanItems: this.#withDisplayFields(this.hoardPlan?.items),
       rarityRows,
       lootItems: filteredLootItems,
       hoardSearchTerm: this.hoardSearchTerm,
       hoardRarityFilter: this.hoardRarityFilter,
+      hoardCategoryFilter: this.hoardCategoryFilter,
       individualSearchTerm: this.individualSearchTerm,
       individualRarityFilter: this.individualRarityFilter,
+      individualCategoryFilter: this.individualCategoryFilter,
       availableLootRarities,
+      availableLootCategories,
       individualTreasureResult: this.individualTreasureResult,
       individualTreasureCreatureCount: [...this.encounter.values()].reduce((sum, e) => sum + e.count, 0),
       // Fallbacks so the Loot tab's search/coins/items UI can render (and
       // items can be added) even before the GM has rolled anything.
       individualTreasureCoins: this.individualTreasureResult?.coins ?? { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
-      individualTreasureItems: this.individualTreasureResult?.items ?? [],
+      individualTreasureItems: this.#withDisplayFields(this.individualTreasureResult?.items),
       individualTreasureRolledCount: this.individualTreasureResult?.rolledCount ?? 0,
       partyLevel: this.partyLevel,
       partySize: this.partySize,
@@ -397,6 +453,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       spend,
       // For the progress bar: clamp visually at 100% even if over budget
       spendPercentClamped: Math.min(100, Math.round(spend.percentUsed * 100)),
+      presets: game.settings.get("encounter-builder-2024", "encounterPresets"),
     };
   }
 
@@ -470,16 +527,24 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     // innerHTML-only patches of .monster-list/.loot-item-list rebuild their
     // <li> elements — this.element itself is untouched by those patches.
     // Same drag payload shape Foundry's own compendium/sidebar entries use
-    // (Document#toDragData()), so Foundry's built-in drop handling (tokens
-    // for Actors on the canvas; inventory entries for Items dropped on an
-    // actor sheet) picks it up with no custom drop code on our side. A
+    // (Document#toDragData()), for Items dropped on an actor sheet — Foundry's
+    // built-in inventory handling picks that up with no custom drop code on
+    // our side. Actor payloads carry an extra encounterBuilder2024 marker so
+    // main.js's dropCanvasData hook can recognize drags that came from this
+    // list specifically (vs. e.g. Foundry's own compendium browser sidebar)
+    // and file the resulting Actor into the "Encounter Builder" folder with
+    // the same sourceUuid-flag dedup Create Combat already uses, instead of
+    // Foundry's default of a fresh unfoldered duplicate on every drop. A
     // dragged monster becomes a plain, unscaled token — Boss-ify/Minion-ify
     // still only apply via the Encounter-tab list + Create Combat.
     this.element.addEventListener("dragstart", (ev) => {
       const monsterLi = ev.target.closest(".monster-entry");
       const itemLi = ev.target.closest(".loot-item-entry");
       if (monsterLi) {
-        ev.dataTransfer.setData("text/plain", JSON.stringify({ type: "Actor", uuid: monsterLi.dataset.uuid }));
+        ev.dataTransfer.setData(
+          "text/plain",
+          JSON.stringify({ type: "Actor", uuid: monsterLi.dataset.uuid, encounterBuilder2024: true })
+        );
       } else if (itemLi) {
         ev.dataTransfer.setData("text/plain", JSON.stringify({ type: "Item", uuid: itemLi.dataset.uuid }));
       }
@@ -590,6 +655,11 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       const listEl = this.element.querySelector(".loot-item-list");
       if (listEl) listEl.innerHTML = this.#buildLootItemListHtml(this.#getFilteredLootItems());
     });
+    this.element.querySelector('[name="hoardCategoryFilter"]')?.addEventListener("change", (ev) => {
+      this.hoardCategoryFilter = ev.target.value;
+      const listEl = this.element.querySelector(".loot-item-list");
+      if (listEl) listEl.innerHTML = this.#buildLootItemListHtml(this.#getFilteredLootItems());
+    });
     // Only updates state — takes effect on the next "Roll Suggested
     // Loot" / auto-roll, rather than immediately discarding whatever
     // plan (and any manually-added items) is already on screen.
@@ -606,31 +676,36 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       const listEl = this.element.querySelector(".loot-item-list");
       if (listEl) listEl.innerHTML = this.#buildLootItemListHtml(this.#getFilteredLootItems());
     });
+    this.element.querySelector('[name="individualCategoryFilter"]')?.addEventListener("change", (ev) => {
+      this.individualCategoryFilter = ev.target.value;
+      const listEl = this.element.querySelector(".loot-item-list");
+      if (listEl) listEl.innerHTML = this.#buildLootItemListHtml(this.#getFilteredLootItems());
+    });
 
     for (const coin of ["cp", "sp", "ep", "gp", "pp"]) {
-      this.element.querySelector(`[name="lootCoin-${coin}"]`)?.addEventListener("change", (ev) => {
-        this.#ensureLootPlan().coins[coin] = Math.max(0, Number(ev.target.value) || 0);
+      this.element.querySelector(`[name="hoardCoin-${coin}"]`)?.addEventListener("change", (ev) => {
+        this.#ensureHoardPlan().coins[coin] = Math.max(0, Number(ev.target.value) || 0);
       });
       this.element.querySelector(`[name="individualCoin-${coin}"]`)?.addEventListener("change", (ev) => {
         this.#ensureIndividualTreasureResult().coins[coin] = Math.max(0, Number(ev.target.value) || 0);
       });
     }
-    this.element.querySelector('[name="lootGemsArtCount"]')?.addEventListener("change", (ev) => {
-      const plan = this.#ensureLootPlan();
+    this.element.querySelector('[name="hoardGemsArtCount"]')?.addEventListener("change", (ev) => {
+      const plan = this.#ensureHoardPlan();
       plan.gemsOrArt.count = Math.max(0, Number(ev.target.value) || 0);
       // Type is always "gems" now (Art Objects removed for simplicity) —
       // set it here too in case a plan was built before this change and
       // still carries an old "art"/"none" value.
       plan.gemsOrArt.type = "gems";
     });
-    this.element.querySelector('[name="lootGemsArtValue"]')?.addEventListener("change", (ev) => {
-      const plan = this.#ensureLootPlan();
+    this.element.querySelector('[name="hoardGemsArtValue"]')?.addEventListener("change", (ev) => {
+      const plan = this.#ensureHoardPlan();
       plan.gemsOrArt.unitValue = Math.max(0, Number(ev.target.value) || 0);
       plan.gemsOrArt.type = "gems";
     });
     for (const rarity of RARITY_TIERS) {
-      this.element.querySelector(`[name="lootRarity-${rarity}"]`)?.addEventListener("change", (ev) => {
-        this.#ensureLootPlan().rarityCounts[rarity] = Math.max(0, Number(ev.target.value) || 0);
+      this.element.querySelector(`[name="hoardRarity-${rarity}"]`)?.addEventListener("change", (ev) => {
+        this.#ensureHoardPlan().rarityCounts[rarity] = Math.max(0, Number(ev.target.value) || 0);
       });
     }
 
@@ -660,10 +735,11 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
           <p><strong>Minion</strong>: turns a monster into a fragile "minion" with fixed low HP and fixed damage (no rolling) — great for fast, disposable group fights. Costs much less of the XP budget, so a crowd of them is affordable.</p>
           <p><strong>Lair</strong>: marks a monster as fighting in its own lair, correctly increasing its XP cost per the 2024 rules (only shown for monsters that actually have lair actions).</p>
           <p><strong>Encounter HP</strong>: choose how every monster's HP is set when placed — RAW (as printed), Average, or Maxroll (always the highest possible roll).</p>
-          <p><strong>Create Combat</strong>: places tokens on the map and starts a Combat with everything currently in the list.</p>
+          <p><strong>Deploy Encounter</strong>: places tokens on the map and starts a Combat with everything currently in the list.</p>
           <p><strong>Revert</strong> (shows up once Boss-ify/Minion-ify has been applied): restores that specific monster's original stats.</p>
+          <p><strong>Save As… / Load / Delete</strong> (below "Encounter"): save the current monster list, party config, and any already-rolled Treasure Hoard as a named preset — visible to every GM in this world, so a prepared encounter can be pulled back up in a later session.</p>
 
-          <h3>Loot</h3>
+          <h3>Individual Treasure</h3>
           <p>Rolls <strong>Individual Treasure</strong> — the coins and small items each creature in the encounter is carrying.</p>
 
           <h3>Treasure Hoard</h3>
@@ -890,7 +966,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
    * Clears the current encounter selection only — party config, compendium
    * selection, and filters are kept, since those usually stay the same
    * across multiple encounters in one session. Deliberately leaves
-   * lootPlan/individualTreasureResult alone, same as the Hoard tab
+   * hoardPlan/individualTreasureResult alone, same as the Hoard tab
    * already did — the coin totals may end up rolled against a now-cleared
    * encounter, but clearing them automatically would also wipe out any
    * manually-added items, which aren't tied to the encounter at all.
@@ -898,6 +974,166 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   static #onReset(event, target) {
     this.encounter = new Map();
     this.autoFillWarning = null;
+    this.render();
+  }
+
+  /**
+   * Saves the current encounter list + party config as a named, world-scoped
+   * preset (game.settings, not a Document) so any GM in this world can load
+   * it back later — prepared content, not a personal tool preference like
+   * the other client-scoped settings in this module. Only the monster's
+   * uuid/count/scaling flags are stored, not a full snapshot of the monster
+   * itself, so it always reflects whatever that compendium entry currently
+   * looks like when loaded (see #onLoadPreset for what happens if it's gone
+   * by then). Overwrites an existing preset of the same name rather than
+   * creating a duplicate.
+   *
+   * The Treasure Hoard plan (this.hoardPlan) is included as-is when one
+   * exists — it's already the same lightweight preview shape (coins,
+   * gems/art, and a flat {uuid,name,img,rarity,count,source} item list) that
+   * createLootActor() consumes, so a GM's hand-edited item selection (added
+   * search results, tweaked rarity counts, adjusted coin values) survives
+   * the round-trip exactly as left, not just whatever the tier table would
+   * roll fresh. Omitted entirely if no hoard has been rolled yet for this
+   * session, so old presets and encounters without a hoard don't carry a
+   * meaningless null around.
+   */
+  static async #onSavePreset(event, target) {
+    const result = await foundry.applications.api.DialogV2.input({
+      window: { title: "Save Encounter Preset" },
+      content: `<div class="form-group"><label>Preset Name</label><input type="text" name="presetName" required autofocus /></div>`,
+      ok: { label: "Save" },
+    });
+    const name = result?.presetName?.trim();
+    if (!name) return;
+
+    const snapshot = {
+      name,
+      partyLevel: this.partyLevel,
+      partySize: this.partySize,
+      difficulty: this.difficulty,
+      monsters: [...this.encounter.values()].map((e) => ({
+        uuid: e.monster.uuid,
+        count: e.count,
+        inLair: e.inLair,
+        isBoss: e.isBoss,
+        bossifyTier: e.bossifyTier ?? null,
+        minionify: e.minionify,
+        applyAC: e.applyAC,
+        applyHP: e.applyHP,
+        applyAbilities: e.applyAbilities,
+        applyDamageDice: e.applyDamageDice,
+      })),
+    };
+    if (this.hoardPlan) {
+      snapshot.hoardPlan = this.hoardPlan;
+      snapshot.hoardLootBasis = this.hoardLootBasis;
+    }
+
+    const presets = game.settings.get("encounter-builder-2024", "encounterPresets");
+    const existingIndex = presets.findIndex((p) => p.name === name);
+    if (existingIndex >= 0) presets[existingIndex] = snapshot;
+    else presets.push(snapshot);
+    await game.settings.set("encounter-builder-2024", "encounterPresets", presets);
+
+    ui.notifications.info(`Encounter preset "${name}" saved${snapshot.hoardPlan ? " (including its Treasure Hoard)" : ""}.`);
+    this.render();
+  }
+
+  /**
+   * Loads a saved preset, replacing the current encounter list and party
+   * config. Monsters are re-resolved by uuid against the currently loaded
+   * monster index (only enabled compendiums) — any that can't be found
+   * (compendium disabled, or the content itself removed since saving) are
+   * silently dropped from the loaded list, with one warning summarizing how
+   * many, same pattern as #onCreateCombat's failedMonsters handling.
+   *
+   * Reads `preset.monsters ?? preset.entries` and `preset.hoardPlan ??
+   * preset.lootPlan` — both fields were renamed for clarity after the first
+   * few presets already existed in the wild (`entries` didn't read as
+   * obviously as "the monster list" in a raw settings dump, and `lootPlan`
+   * collided in spirit with the separate "Loot" tab, which is Individual
+   * Treasure, not the Hoard). The old key names are still read here so
+   * presets saved before the rename keep loading correctly; new saves
+   * always write the new names.
+   */
+  static #onLoadPreset(event, target) {
+    const name = this.element.querySelector('[name="presetSelect"]')?.value;
+    if (!name) {
+      ui.notifications.warn("Select a preset to load first.");
+      return;
+    }
+    const preset = game.settings.get("encounter-builder-2024", "encounterPresets").find((p) => p.name === name);
+    if (!preset) return;
+
+    this.partyLevel = preset.partyLevel;
+    this.partySize = preset.partySize;
+    this.difficulty = preset.difficulty;
+
+    const monsterEntries = preset.monsters ?? preset.entries ?? [];
+    const newEncounter = new Map();
+    let missingCount = 0;
+    for (const entry of monsterEntries) {
+      const monster = this.monsterIndex.find((m) => m.uuid === entry.uuid);
+      if (!monster) {
+        missingCount++;
+        continue;
+      }
+      newEncounter.set(entry.uuid, {
+        monster,
+        count: entry.count,
+        inLair: entry.inLair,
+        isBoss: entry.isBoss,
+        bossifyTier: entry.bossifyTier,
+        minionify: entry.minionify,
+        applyAC: entry.applyAC,
+        applyHP: entry.applyHP,
+        applyAbilities: entry.applyAbilities,
+        applyDamageDice: entry.applyDamageDice,
+      });
+    }
+    this.encounter = newEncounter;
+    // So the per-entry Boss checkbox/"Boss-ify…" button is actually visible
+    // for a boss carried in from the preset, instead of silently applying
+    // at Create Combat with no on-screen indication (bossMode only gates
+    // display, not the Boss-ify logic itself).
+    if (monsterEntries.some((e) => e.isBoss)) this.bossMode = true;
+    this.autoFillWarning = null;
+
+    // Older presets (saved before Treasure Hoard support was added) simply
+    // won't have this field — leaves whatever hoard is currently on screen
+    // alone rather than clearing it out from under the GM.
+    const hoardPlan = preset.hoardPlan ?? preset.lootPlan;
+    if (hoardPlan) {
+      this.hoardPlan = hoardPlan;
+      this.hoardLootBasis = preset.hoardLootBasis;
+    }
+
+    if (missingCount > 0) {
+      ui.notifications.warn(
+        `Preset "${name}" loaded, but ${missingCount} monster(s) could not be found (compendium disabled, or content removed) and were skipped.`
+      );
+    } else {
+      ui.notifications.info(`Preset "${name}" loaded${hoardPlan ? " (including its Treasure Hoard)" : ""}.`);
+    }
+    this.render();
+  }
+
+  static async #onDeletePreset(event, target) {
+    const name = this.element.querySelector('[name="presetSelect"]')?.value;
+    if (!name) {
+      ui.notifications.warn("Select a preset to delete first.");
+      return;
+    }
+    const confirmed = await foundry.applications.api.DialogV2.confirm({
+      window: { title: "Delete Preset" },
+      content: `<p>Delete the preset "${name}"? This cannot be undone.</p>`,
+    });
+    if (!confirmed) return;
+
+    const presets = game.settings.get("encounter-builder-2024", "encounterPresets").filter((p) => p.name !== name);
+    await game.settings.set("encounter-builder-2024", "encounterPresets", presets);
+    ui.notifications.info(`Preset "${name}" deleted.`);
     this.render();
   }
 
@@ -970,29 +1206,64 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
     const tokenData = [];
     const failedMonsters = [];
+
+    // Per-run cache for Boss-ify/Minion-ify Actor reuse: entry.monster.uuid
+    // + the scaling params that fully determine the result (tier + apply*
+    // flags for Boss-ify; nothing extra for Minion-ify, which only depends
+    // on the source monster's CR) → the Actor already created for that exact
+    // variant. Without this, "7 Goblin Minions" in one encounter would
+    // import 7 separate identical Actors instead of one shared one. Reuse
+    // is only ever cached when the resulting prototype token is UNLINKED
+    // (actorLink === false, the dnd5e default for NPC statblocks) — linked
+    // tokens share one HP pool with their Actor, so sharing an Actor across
+    // multiple linked tokens would mean damaging one damages all of them.
+    const scaledActorReuse = new Map();
+    const variantKeyFor = (monster, shouldBossify, bossifyTier, shouldMinionify, applyAC, applyHP, applyAbilities, applyDamageDice) => {
+      if (shouldBossify) return `boss:${monster.uuid}:${bossifyTier}:${applyAC}:${applyHP}:${applyAbilities}:${applyDamageDice}`;
+      if (shouldMinionify) return `minion:${monster.uuid}`;
+      return null;
+    };
+
     for (let i = 0; i < spawnList.length; i++) {
       const { monster, isBoss, bossifyTier, minionify, applyAC, applyHP, applyAbilities, applyDamageDice } =
         spawnList[i];
       const shouldBossify = isBoss && bossifyTier !== null;
       const shouldMinionify = minionify;
+      const variantKey = variantKeyFor(monster, shouldBossify, bossifyTier, shouldMinionify, applyAC, applyHP, applyAbilities, applyDamageDice);
 
-      // Boss-ified/Minion-ified entries always get a fresh Actor instead of
-      // reusing a previously-imported one, AND the reuse lookup itself
-      // skips any world Actor still carrying either snapshot flag from an
-      // earlier encounter — otherwise, changing which monster is the boss
-      // (or dropping Boss-ify/Minion-ify entirely) after a previous Create
+      // Plain (non-Boss/Minion) entries keep the original lookup: any world
+      // Actor imported from this same compendium monster, as long as it
+      // isn't still carrying a scaling snapshot flag from an earlier
+      // encounter — otherwise changing which monster is the boss (or
+      // dropping Boss-ify/Minion-ify entirely) after a previous Create
       // Combat run could silently reuse that old, already-scaled Actor for
       // what's now supposed to be a plain, unscaled copy of the same
-      // monster.
-      let worldActor =
-        shouldBossify || shouldMinionify
-          ? null
-          : game.actors.find(
-              (a) =>
-                a.getFlag("encounter-builder-2024", "sourceUuid") === monster.uuid &&
-                !a.getFlag("encounter-builder-2024", "bossifySnapshot") &&
-                !a.getFlag("encounter-builder-2024", "minionifySnapshot")
-            );
+      // monster. Boss/Minion entries instead match the exact variant via
+      // variantKey, first against this run's own cache, then against any
+      // matching Actor left over from an earlier Create Combat run.
+      let worldActor = variantKey
+        ? scaledActorReuse.get(variantKey) ??
+          game.actors.find((a) => {
+            if (a.getFlag("encounter-builder-2024", "sourceUuid") !== monster.uuid) return false;
+            if (a.prototypeToken.actorLink) return false;
+            if (shouldBossify) {
+              const snap = a.getFlag("encounter-builder-2024", "bossifySnapshot");
+              return (
+                snap?.tier === bossifyTier &&
+                snap?.applyAC === applyAC &&
+                snap?.applyHP === applyHP &&
+                snap?.applyAbilities === applyAbilities &&
+                snap?.applyDamageDice === applyDamageDice
+              );
+            }
+            return Boolean(a.getFlag("encounter-builder-2024", "minionifySnapshot"));
+          })
+        : game.actors.find(
+            (a) =>
+              a.getFlag("encounter-builder-2024", "sourceUuid") === monster.uuid &&
+              !a.getFlag("encounter-builder-2024", "bossifySnapshot") &&
+              !a.getFlag("encounter-builder-2024", "minionifySnapshot")
+          );
 
       if (!worldActor) {
         let sourceActor;
@@ -1013,6 +1284,10 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         if (shouldBossify) {
           try {
             await bossifyActor(worldActor, bossifyTier, { applyAC, applyHP, applyAbilities, applyDamageDice });
+            // Disambiguates this Actor from the plain version and from
+            // other tiers in the "Encounter Builder" folder — tokens
+            // themselves keep the plain monster.name (set below).
+            await worldActor.update({ name: `${worldActor.name} (${BOSSIFY_TIERS[bossifyTier]?.label ?? bossifyTier})` });
           } catch (err) {
             // bossifyActor already reports failures to the user itself —
             // don't abort the rest of the encounter over one boss-ify error.
@@ -1023,6 +1298,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         if (shouldMinionify) {
           try {
             await minionifyActor(worldActor);
+            await worldActor.update({ name: `${worldActor.name} (Minion)` });
           } catch (err) {
             console.warn(`Encounter Builder | Minion-ify failed for "${worldActor.name}"`, err);
           }
@@ -1038,6 +1314,16 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
             await scaleEncounterHp(worldActor, this.encounterHpMode);
           } catch (err) {
             console.warn(`Encounter Builder | Encounter HP scaling failed for "${worldActor.name}"`, err);
+          }
+        }
+
+        if (variantKey) {
+          if (worldActor.prototypeToken.actorLink) {
+            console.warn(
+              `Encounter Builder | "${worldActor.name}" uses a linked prototype token — skipping Actor reuse for repeated Boss-ify/Minion-ify entries of this monster to avoid a shared HP pool.`
+            );
+          } else {
+            scaledActorReuse.set(variantKey, worldActor);
           }
         }
       }
@@ -1105,7 +1391,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   }
 
   /**
-   * Footer "Generate Loot" button — dispatches based on the active tab,
+   * Footer "Place Loot" button — dispatches based on the active tab,
    * since the two loot tabs produce different Actors from different
    * state (a full Treasure Hoard plan vs. a per-creature Individual
    * Treasure roll).
@@ -1140,11 +1426,11 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     // If the GM never visited the Treasure Hoard tab / never rolled a
     // suggestion, roll one now automatically rather than generating an
     // empty hoard. If a plan already exists (including a manually-built
-    // empty one from #ensureLootPlan) it's left as-is — auto-rolling on
+    // empty one from #ensureHoardPlan) it's left as-is — auto-rolling on
     // top of it would silently overwrite whatever the GM already edited.
-    if (!this.lootPlan) this.lootPlan = await this.#rollHoardPlan();
+    if (!this.hoardPlan) this.hoardPlan = await this.#rollHoardPlan();
 
-    const { coins, gemsOrArt, items } = this.lootPlan;
+    const { coins, gemsOrArt, items } = this.hoardPlan;
     const hasCoins = Object.values(coins).some((v) => v > 0);
     const hasGemsOrArt = (gemsOrArt?.count ?? 0) > 0;
     if (!hasCoins && !hasGemsOrArt && items.length === 0) {
@@ -1153,12 +1439,12 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     }
 
     try { await this.minimize?.(); } catch (err) { console.warn("Encounter Builder | minimize failed", err); }
-    await createLootActor(this.lootPlan, `Treasure Hoard (CR ${this.partyLevel})`);
+    await createLootActor(this.hoardPlan, `Treasure Hoard (CR ${this.partyLevel})`);
     try { await this.maximize?.(); } catch (err) { console.warn("Encounter Builder | maximize failed", err); }
 
-    if (this.lootPlan.confidence === "approximate") {
+    if (this.hoardPlan.confidence === "approximate") {
       ui.notifications.warn(
-        `Loot generated using an APPROXIMATE table (tier ${this.lootPlan.tier}) — double-check against your DMG for high-level treasure.`
+        `Loot generated using an APPROXIMATE table (tier ${this.hoardPlan.tier}) — double-check against your DMG for high-level treasure.`
       );
     } else {
       ui.notifications.info("Loot generated, placed as a hidden token — not added to combat.");
@@ -1219,18 +1505,18 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   }
 
   /** Rolls a fresh starting point (RAW tier, or the homebrew smoothed level table if selected) — coins, gems/art, AND resolved items, all previewed immediately. */
-  static async #onRollLoot(event, target) {
-    this.lootPlan = await this.#rollHoardPlan();
+  static async #onRollHoard(event, target) {
+    this.hoardPlan = await this.#rollHoardPlan();
     this.render();
   }
 
   /** Re-rolls just the magic items using whatever rarity counts are currently in the boxes, keeping manually-added items untouched. */
-  static async #onRerollLoot(event, target) {
-    if (!this.lootPlan) {
+  static async #onRerollHoard(event, target) {
+    if (!this.hoardPlan) {
       ui.notifications.warn('Click "Roll Suggested Loot" first.');
       return;
     }
-    this.lootPlan.items = await rerollMagicItems(this.lootPlan, this.#getEnabledLootCollections());
+    this.hoardPlan.items = await rerollMagicItems(this.hoardPlan, this.#getEnabledLootCollections());
     this.render();
   }
 
@@ -1262,10 +1548,10 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     return this.individualTreasureResult;
   }
 
-  /** Ensures lootPlan exists (zero coins/gems, no items, no tier yet) so the Hoard tab's coin/gems/rarity/item inputs work even before the GM has clicked "Roll Suggested Loot". */
-  #ensureLootPlan() {
-    if (!this.lootPlan) {
-      this.lootPlan = {
+  /** Ensures hoardPlan exists (zero coins/gems, no items, no tier yet) so the Hoard tab's coin/gems/rarity/item inputs work even before the GM has clicked "Roll Suggested Loot". */
+  #ensureHoardPlan() {
+    if (!this.hoardPlan) {
+      this.hoardPlan = {
         tier: null,
         confidence: null,
         coins: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
@@ -1274,7 +1560,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         items: [],
       };
     }
-    return this.lootPlan;
+    return this.hoardPlan;
   }
 
   /**
@@ -1283,24 +1569,54 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
    * items, or the Individual Treasure result's items.
    */
   #getActiveLootItemsContainer() {
-    return this.activeTab === "loot" ? this.#ensureIndividualTreasureResult() : this.#ensureLootPlan();
+    return this.activeTab === "loot" ? this.#ensureIndividualTreasureResult() : this.#ensureHoardPlan();
   }
 
+  /**
+   * Shared by two different call sites with different semantics, told
+   * apart by which data attribute is present:
+   * - From the browsable item list (data-uuid only): merge into an
+   *   existing PLAIN (non-customized) stack of the same compendium item,
+   *   or create a new one. Never merges into a customized entry — a
+   *   fresh "+1" from the browser shouldn't silently inflate someone's
+   *   already-customized magic item's count.
+   * - From a plan-list row's own "+" button (data-key): bump that EXACT
+   *   entry's count, customized or not — every entry (see
+   *   #onCustomizeLootItem) has a stable `key` distinct from its `uuid`
+   *   precisely so multiple entries can share a source item without
+   *   colliding here.
+   */
   static #onAddLootItem(event, target) {
-    const uuid = target.dataset.uuid;
-    const item = this.lootItemIndex.find((i) => i.uuid === uuid);
-    if (!item) return;
     const container = this.#getActiveLootItemsContainer();
     if (!container) return;
-
     this.#captureScroll(".loot-plan-column");
-    const existing = container.items.find((i) => i.uuid === uuid);
-    if (existing) existing.count += 1;
-    else container.items.push({ uuid: item.uuid, name: item.name, img: item.img, rarity: item.rarity, count: 1, source: "manual" });
+
+    if (target.dataset.key) {
+      const existing = container.items.find((i) => (i.key ?? i.uuid) === target.dataset.key);
+      if (existing) existing.count += 1;
+    } else {
+      const uuid = target.dataset.uuid;
+      const item = this.lootItemIndex.find((i) => i.uuid === uuid);
+      if (!item) return;
+      const existing = container.items.find((i) => i.uuid === uuid && !i.customization);
+      if (existing) existing.count += 1;
+      else {
+        container.items.push({
+          key: foundry.utils.randomID(),
+          uuid: item.uuid,
+          name: item.name,
+          img: item.img,
+          rarity: item.rarity,
+          category: item.category,
+          count: 1,
+          source: "manual",
+        });
+      }
+    }
     this.render();
   }
 
-  /** Opens the item's own sheet (description, stats, etc.) so the GM can preview it before deciding whether to add it — read-only for locked compendium items, same as opening any other compendium document in Foundry. */
+  /** Opens the item's own sheet (description, stats, etc.) so the GM can preview it before deciding whether to add it — read-only for locked compendium items, same as opening any other compendium document in Foundry. Always shows the ORIGINAL compendium item, even for a customized plan entry — there's no sheet for the not-yet-materialized customized version. */
   static async #onViewLootItem(event, target) {
     const item = await fromUuid(target.dataset.uuid);
     if (!item) {
@@ -1310,25 +1626,42 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     item.sheet.render(true);
   }
 
+  /** Targets by `key` (falling back to `uuid` for plan entries saved before that field existed) — see #onAddLootItem for why key-based targeting matters once customized entries can share a uuid with a plain stack. */
   static #onRemoveLootItem(event, target) {
-    const uuid = target.dataset.uuid;
+    const key = target.dataset.key;
     const container = this.#getActiveLootItemsContainer();
     if (!container) return;
-    const existing = container.items.find((i) => i.uuid === uuid);
+    const existing = container.items.find((i) => (i.key ?? i.uuid) === key);
     if (!existing) return;
     this.#captureScroll(".loot-plan-column");
     existing.count -= 1;
     if (existing.count <= 0) {
-      container.items = container.items.filter((i) => i.uuid !== uuid);
+      container.items = container.items.filter((i) => (i.key ?? i.uuid) !== key);
     }
     this.render();
   }
 
   static #onDeleteLootItem(event, target) {
+    const key = target.dataset.key;
     const container = this.#getActiveLootItemsContainer();
     if (!container) return;
     this.#captureScroll(".loot-plan-column");
-    container.items = container.items.filter((i) => i.uuid !== target.dataset.uuid);
+    container.items = container.items.filter((i) => (i.key ?? i.uuid) !== key);
     this.render();
+  }
+
+  /**
+   * Opens the Customize Item dialog for a loot-plan entry — homebrew
+   * name/magic-bonus/extra-damage-type, written back onto the plan entry
+   * (not the real Item, which doesn't exist yet). See item-customize-
+   * dialog.js for the split-one-copy-off-the-stack behavior when count > 1.
+   */
+  static #onCustomizeLootItem(event, target) {
+    const key = target.dataset.key;
+    const container = this.#getActiveLootItemsContainer();
+    if (!container) return;
+    const entry = container.items.find((i) => (i.key ?? i.uuid) === key);
+    if (!entry) return;
+    new ItemCustomizeDialog(entry, container, this).render({ force: true });
   }
 }

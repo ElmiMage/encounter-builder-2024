@@ -309,6 +309,11 @@
   min-width: 1.6rem;
 }
 
+.encounter-builder-2024 .customized-marker {
+  margin-left: 0.25rem;
+  font-size: 0.85em;
+}
+
 .encounter-builder-2024 .lair-toggle,
 .encounter-builder-2024 .boss-toggle,
 .encounter-builder-2024 .minion-toggle {
@@ -478,6 +483,23 @@
   width: auto;
 }
 
+.encounter-builder-2024 .preset-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.encounter-builder-2024 .preset-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.encounter-builder-2024 .preset-row button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .encounter-builder-2024 .square-btn {
   min-width: 1.6rem;
   height: 1.6rem;
@@ -588,6 +610,50 @@
 }
 
 #encounter-builder-2024-bossify-dialog .bossify-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+/* Customize Item dialog — same reasoning as the Boss-ify dialog above (separate ApplicationV2 window, own id-scoped ruleset). */
+#encounter-builder-2024-item-customize-dialog .item-customize-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+#encounter-builder-2024-item-customize-dialog .item-customize-row select,
+#encounter-builder-2024-item-customize-dialog .item-customize-row input[type="text"] {
+  flex: 1;
+}
+
+#encounter-builder-2024-item-customize-dialog .item-customize-checkbox {
+  justify-content: flex-start;
+}
+
+#encounter-builder-2024-item-customize-dialog .item-customize-checkbox input {
+  flex: 0 0 auto;
+}
+
+#encounter-builder-2024-item-customize-dialog .item-customize-extra-damage {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0.5rem 1.5rem;
+  flex-wrap: wrap;
+}
+
+#encounter-builder-2024-item-customize-dialog .item-customize-extra-damage input[type="number"] {
+  width: 3.5rem;
+}
+
+#encounter-builder-2024-item-customize-dialog .item-customize-hint {
+  font-size: 0.8em;
+  opacity: 0.8;
+}
+
+#encounter-builder-2024-item-customize-dialog .item-customize-buttons {
   display: flex;
   gap: 0.5rem;
   margin-top: 0.5rem;

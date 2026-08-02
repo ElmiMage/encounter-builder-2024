@@ -2,6 +2,7 @@ import { EncounterBuilderApp } from "./encounter-builder-app.js";
 import { humanizeToken } from "./format.js";
 import { ScalingSettingsApp } from "./scaling-settings-app.js";
 import { MINION_XP_MULTIPLIER } from "./minion-scaling.js";
+import { loadFullActor } from "./compendium-browser.js";
 
 let appInstance = null;
 
@@ -31,6 +32,18 @@ Hooks.once("init", () => {
   });
   game.settings.register("encounter-builder-2024", "disabledLootCompendiums", {
     scope: "client",
+    config: false,
+    type: Array,
+    default: [],
+  });
+
+  // World-scoped (not client) — presets are prepared encounter content, not
+  // a personal tool preference, so every GM in the world sees the same
+  // list. Each entry: {name, partyLevel, partySize, difficulty, entries:
+  // [{uuid, count, inLair, isBoss, bossifyTier, minionify, applyAC,
+  // applyHP, applyAbilities, applyDamageDice}, ...]}.
+  game.settings.register("encounter-builder-2024", "encounterPresets", {
+    scope: "world",
     config: false,
     type: Array,
     default: [],
@@ -118,3 +131,90 @@ Hooks.once("ready", () => {
   const mod = game.modules.get("encounter-builder-2024");
   if (mod) mod.api = { open: openEncounterBuilder };
 });
+
+Hooks.on("dropCanvasData", (canvas, data, event) => {
+  // Foundry core's Canvas#_onDrop has no case for type "Item" (only Actor,
+  // JournalEntry(Page), Macro, PlaylistSound, Tile) — dropping an Item on
+  // the canvas (e.g. dragging one from our Loot tab) silently does nothing
+  // unless a module like Item Piles registers its own dropCanvasData handler
+  // for it. We don't implement a fallback pile ourselves; just tell the GM
+  // why nothing happened instead of leaving it a silent no-op.
+  if (data.type === "Item") {
+    if (game.modules.get("item-piles")?.active) return;
+    ui.notifications.warn(
+      "Dropping items onto the canvas requires the Item Piles module — install and enable it to place loose items as pickups."
+    );
+    return;
+  }
+
+  // Only monsters dragged from our own Encounter tab list carry this marker
+  // (set in encounter-builder-app.js's dragstart listener) — Actor drags
+  // from anywhere else (Foundry's own compendium browser sidebar, etc.)
+  // fall through untouched to Foundry's default handling below.
+  if (data.type === "Actor" && data.encounterBuilder2024) {
+    dropEncounterBuilderMonster(data, event);
+    // Tells Canvas#_onDrop (client/canvas/board.mjs) not to also run its
+    // own Actor case (TokenLayer#_onDropActorData) — otherwise we'd get
+    // two tokens, one from us and one from Foundry's default import-a-
+    // fresh-duplicate-Actor behavior.
+    return false;
+  }
+});
+
+/**
+ * Creates (or reuses) a world Actor for a monster dragged from the
+ * Encounter tab's list and drops a Token for it at the cursor position.
+ *
+ * Foundry's own TokenLayer#_onDropActorData (client/canvas/layers/
+ * tokens.mjs) imports a brand-new, unfoldered world Actor from the
+ * compendium on EVERY drop — no reuse, no folder. That's fine for a one-off
+ * drag from the sidebar, but our own list already has a better convention
+ * (used by the Encounter tab's "Create Combat" button): file world Actors
+ * into a shared "Encounter Builder" folder, and tag them with an
+ * `encounter-builder-2024.sourceUuid` flag so re-dropping the same monster
+ * reuses the existing Actor instead of piling up duplicates. This mirrors
+ * that exact lookup/creation logic for the canvas-drag path.
+ */
+async function dropEncounterBuilderMonster(data, event) {
+  if (!game.user.can("TOKEN_CREATE")) {
+    ui.notifications.warn("You do not have permission to create new Tokens!");
+    return;
+  }
+  if (!canvas.dimensions.rect.contains(data.x, data.y)) return;
+
+  let worldActor = game.actors.find(
+    (a) =>
+      a.getFlag("encounter-builder-2024", "sourceUuid") === data.uuid &&
+      !a.getFlag("encounter-builder-2024", "bossifySnapshot") &&
+      !a.getFlag("encounter-builder-2024", "minionifySnapshot")
+  );
+
+  if (!worldActor) {
+    const sourceActor = await loadFullActor(data.uuid);
+    if (!sourceActor) {
+      ui.notifications.warn("Could not load that monster.");
+      return;
+    }
+    const folder =
+      game.folders.find((f) => f.type === "Actor" && f.name === "Encounter Builder") ??
+      (await Folder.create({ name: "Encounter Builder", type: "Actor" }));
+    const actorData = sourceActor.toObject();
+    actorData.folder = folder.id;
+    worldActor = await Actor.create(actorData);
+    await worldActor.setFlag("encounter-builder-2024", "sourceUuid", data.uuid);
+  }
+
+  const token = await worldActor.getTokenDocument({}, { parent: canvas.scene });
+  const gridSize = canvas.scene.grid.size;
+  let x = data.x - ((token.width ?? 1) * gridSize) / 2;
+  let y = data.y - ((token.height ?? 1) * gridSize) / 2;
+  if (!event.shiftKey) {
+    const snapped = canvas.grid.getSnappedPoint({ x, y }, { mode: CONST.GRID_SNAPPING_MODES.TOP_LEFT_VERTEX });
+    x = snapped.x;
+    y = snapped.y;
+  }
+  token.updateSource({ x, y, hidden: game.user.isGM && event.altKey });
+
+  canvas.tokens.activate();
+  return canvas.scene.createEmbeddedDocuments("Token", [token.toObject()]);
+}

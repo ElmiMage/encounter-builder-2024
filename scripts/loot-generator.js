@@ -2,6 +2,8 @@ import { generateHoard, MAGIC_TABLE_TO_RARITY, RARITY_TIERS } from "./treasure-t
 import { generateSmoothedHoard } from "./smoothed-loot-tables.js";
 import { pickCanvasPoint } from "./canvas-picker.js";
 import { getPackSourceLabel, getPackGroupInfo } from "./compendium-browser.js";
+import { categorizeItem } from "./item-categories.js";
+import { applyItemCustomization } from "./item-customization.js";
 
 export { RARITY_TIERS };
 
@@ -96,6 +98,7 @@ export async function loadItemIndex(collectionIds = null) {
         img: entry.img,
         rarity: entry.system.rarity,
         itemType: entry.type,
+        category: categorizeItem(entry.type, entry.system?.type?.value),
         sourcePack: pack.collection,
         sourceLabel: getPackSourceLabel(pack),
       });
@@ -123,7 +126,12 @@ async function getCandidatesForRarity(rarity, collectionIds = null) {
     }
     for (const entry of index) {
       if (isPhysicalItemEntry(entry) && entry.system?.rarity === rarity) {
-        candidates.push({ uuid: `Compendium.${pack.collection}.${entry._id}`, name: entry.name, img: entry.img });
+        candidates.push({
+          uuid: `Compendium.${pack.collection}.${entry._id}`,
+          name: entry.name,
+          img: entry.img,
+          category: categorizeItem(entry.type, entry.system?.type?.value),
+        });
       }
     }
   }
@@ -136,7 +144,7 @@ async function getCandidatesForRarity(rarity, collectionIds = null) {
  * GM sees exactly which items were picked before ever creating the
  * Actor, and can reroll or hand-edit from there.
  *
- * @returns {{uuid,name,img,rarity,count,source:"rolled"}[]}
+ * @returns {{key,uuid,name,img,rarity,count,source:"rolled"}[]}
  */
 export async function resolveMagicItems(rarityCounts, collectionIds = null) {
   const resolved = new Map(); // uuid -> entry
@@ -156,7 +164,11 @@ export async function resolveMagicItems(rarityCounts, collectionIds = null) {
       const pick = candidates[Math.floor(Math.random() * candidates.length)];
       const existing = resolved.get(pick.uuid);
       if (existing) existing.count += 1;
-      else resolved.set(pick.uuid, { uuid: pick.uuid, name: pick.name, img: pick.img, rarity, count: 1, source: "rolled" });
+      // Needs its own stable key distinct from uuid — same reason as
+      // manually-added items (see #onAddLootItem in encounter-builder-
+      // app.js): without one, the +/−/×/Customize buttons on this row
+      // can't be told apart from another row sharing the same source uuid.
+      else resolved.set(pick.uuid, { key: foundry.utils.randomID(), uuid: pick.uuid, name: pick.name, img: pick.img, rarity, count: 1, source: "rolled", category: pick.category });
     }
   }
 
@@ -282,15 +294,17 @@ export async function createLootActor(plan, actorName) {
 
     // Items are already fully resolved on the plan (no more randomness
     // happening here) — this loop just materializes exactly what the
-    // GM saw in the preview.
+    // GM saw in the preview, including any per-copy customization (see
+    // item-customization.js) applied via the "Customize…" dialog.
     for (const planItem of plan.items ?? []) {
       const fullItem = await fromUuid(planItem.uuid);
       if (!fullItem) {
         console.warn(`Encounter Builder Loot | fromUuid() failed for ${planItem.uuid} (${planItem.name})`);
         continue;
       }
-      const data = fullItem.toObject();
+      let data = fullItem.toObject();
       if (data.system?.quantity !== undefined) data.system.quantity = planItem.count ?? 1;
+      if (planItem.customization) data = applyItemCustomization(data, planItem);
       itemsToAdd.push(data);
     }
 
