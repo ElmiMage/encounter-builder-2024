@@ -11,7 +11,7 @@ with a fully editable preview before creating anything.
 
 **Encounter tab**
 
-<img width="1107" height="865" alt="Encounter Builder" src="https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.6/screenshots/encounter-tab.jpg" />
+<img width="1107" height="865" alt="Encounter Builder" src="https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.7/screenshots/encounter-tab.jpg" />
 
 - XP budget per 2024 DMG rules (Low/Moderate/High, no group multipliers)
 - Browse monsters from ANY loaded Actor compendium (SRD + your own homebrew)
@@ -60,7 +60,7 @@ with a fully editable preview before creating anything.
 
 **Individual Treasure tab**
 
-<img width="1102" height="864" alt="Encounter Builder Loot" src="https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.6/screenshots/loot-tab.jpg" />
+<img width="1102" height="864" alt="Encounter Builder Loot" src="https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.7/screenshots/loot-tab.jpg" />
 
 - The 2024 DMG's smaller, separate "Individual Treasure" table: the
   incidental coin a single non-hoarding monster carries, as opposed to a
@@ -72,18 +72,12 @@ with a fully editable preview before creating anything.
   of or instead of the rolled coins
 - Filter the item browser by DMG-style category (Weapon, Armor, Ring, Rod,
   Wand, Wondrous Item, and more) — also available on the Treasure Hoard tab
-- **Customize…**: turn any weapon or armor entry (rolled or manually
-  added) into a named magic find before it's materialized — custom name
-  and description, a flat magic bonus, up to two extra damage types
-  (weapons) or resistance types (armor), an attunement requirement, and
-  a rarity that auto-suggests from what you picked but can be manually
-  overridden. Homebrew, not an official DMG item generator — clearly
-  flagged as such
-  in the dialog
+- **Customize…**: turn any weapon or armor entry into a named magic find
+  before it's materialized — see the dedicated section below
 
 **Treasure Hoard tab**
 
-<img width="1180" height="923" alt="Encounter Builder Loot Hoard" src="https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.6/screenshots/treasure-hoard-tab.jpg" />
+<img width="1180" height="923" alt="Encounter Builder Loot Hoard" src="https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.7/screenshots/treasure-hoard-tab.jpg" />
 
 - The 2024 DMG's detailed Treasure Hoard tables — coins, gems/art, and
   resolved magic items with real names, not a blind roll
@@ -102,12 +96,43 @@ with a fully editable preview before creating anything.
   from the DMG's own "Magic Items Awarded by Level" table with a hard
   floor (very rare impossible below level 5, legendary below level 11) —
   see `smoothed-loot-tables.js` for the full methodology
-- Reroll magic items using your own hand-edited rarity counts
+- Reroll all magic items at once using your own hand-edited rarity
+  counts, or 🎲 a single rolled item in place (same rarity, fresh pick,
+  everything else in the plan left untouched)
 - Search + add specific items from your own compendiums; rarity filter is
   ordered common→artifact, not alphabetically, and mundane (non-magical)
   gear is excluded from the loot browser entirely
 - Creates a real Actor with real Items, placed as a **hidden, non-combat**
   token (never added to the Combat tracker — it doesn't fight)
+
+**Item Customize dialog**
+
+<!-- screenshot pending -->
+
+Available from any weapon or armor entry (rolled or manually added) in
+either the Individual Treasure or Treasure Hoard tab — turns a generic
+loot-list item into this encounter's specific magic find before it's
+materialized:
+
+- Custom name and description — the description replaces the base
+  item's text wholesale rather than appending to it
+- A flat magic bonus (+1/+2/+3), correctly targeting `system.magicalBonus`
+  for weapons/wands/rings/wondrous items vs. the differently-nested
+  `system.armor.magicalBonus` for armor/shields (a real dnd5e schema
+  quirk — using the wrong one is a silent no-op for AC). Never lets you
+  accidentally downgrade an item that already has a higher bonus
+- Up to two extra damage types (weapons) or resistance types (armor) —
+  each adds its own weapon damage-roll entry or armor Active Effect
+- A **Requires Attunement** toggle
+- **Rarity** auto-suggests from what you picked (each point of bonus,
+  plus each extra damage/resistance type, counts as a rarity step; armor
+  lands one step higher than a weapon with the same inputs, matching the
+  real DMG's own asymmetry) but is always manually overridable — pick a
+  different one and it sticks, even if you keep changing other fields
+- The suggested name updates live as you pick options, right up until
+  you type your own — then it stops overwriting you
+- Homebrew throughout, clearly flagged as such in the dialog — not an
+  official DMG magic item generator
 
 ## Install (local dev)
 
