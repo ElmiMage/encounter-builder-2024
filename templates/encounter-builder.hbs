@@ -42,7 +42,12 @@
       {{#if spend.overBudget}}<span class="over-budget">OVER BUDGET</span>{{/if}}
     </div>
     <div class="budget-track">
-      <div class="budget-fill {{#if spend.overBudget}}over{{/if}}" style="width: {{spendPercentClamped}}%"></div>
+      {{#if spend.overBudget}}
+        <div class="budget-fill" style="width: 100%; background: linear-gradient(to right, #2e7d32 0%, #2e7d32 {{budgetMarkerPercent}}%, #c62828 {{budgetMarkerPercent}}%, #c62828 100%);"></div>
+        <div class="budget-marker" style="left: {{budgetMarkerPercent}}%"></div>
+      {{else}}
+        <div class="budget-fill" style="width: {{spendPercentClamped}}%"></div>
+      {{/if}}
     </div>
   </section>
 
@@ -157,7 +162,7 @@
             <option value="maxroll" {{#if (eq encounterHpMode "maxroll")}}selected{{/if}}>Maxroll</option>
           </select>
         </label>
-        <button type="button" class="delete-btn square-btn" data-action="reset" title="Clear all">×</button>
+        <button type="button" class="delete-btn square-btn" data-action="reset" title="Clear entire encounter"><i class="fas fa-trash"></i></button>
       </h3>
       <div class="preset-row">
         <select name="presetSelect">
@@ -181,9 +186,7 @@
                 </label>
               {{/if}}
               {{#if ../bossMode}}
-                <label class="boss-toggle" title="Mark this monster as the encounter's boss — enables Boss-ify scaling for it, whether it came from Auto-Fill or was added manually">
-                  <input type="checkbox" data-action="toggleBoss" data-uuid="{{this.monster.uuid}}" {{#if this.isBoss}}checked{{/if}} /> Boss
-                </label>
+                <button type="button" class="eb-toggle-pill {{#if this.isBoss}}active{{/if}}" data-action="toggleBoss" data-uuid="{{this.monster.uuid}}" title="Mark this monster as the encounter's boss — enables Boss-ify scaling for it, whether it came from Auto-Fill or was added manually">Boss</button>
               {{/if}}
               {{#if this.isBoss}}
                 <button type="button" data-action="openBossifyDialog" data-uuid="{{this.monster.uuid}}" title="Preview and choose a difficulty tier to scale this boss's HP, damage, AC and ability scores">
@@ -193,9 +196,7 @@
                   <button type="button" data-action="revertBossify" data-actor-id="{{this.bossifiedActorId}}" title="Restore this boss's original stats">Revert</button>
                 {{/if}}
               {{/if}}
-              <label class="minion-toggle" title="Convert to MCDM Minion stats (Flee, Mortals!) at Create Combat — fixed low HP and flat damage per hit for this CR, no AC/attack changes">
-                <input type="checkbox" data-action="toggleMinionify" data-uuid="{{this.monster.uuid}}" {{#if this.minionify}}checked{{/if}} /> Minion
-              </label>
+              <button type="button" class="eb-toggle-pill {{#if this.minionify}}active{{/if}}" data-action="toggleMinionify" data-uuid="{{this.monster.uuid}}" title="Convert to MCDM Minion stats (Flee, Mortals!) at Create Combat — fixed low HP and flat damage per hit for this CR, no AC/attack changes">Minion</button>
               {{#if this.minionifiedActorId}}
                 <button type="button" data-action="revertMinionify" data-actor-id="{{this.minionifiedActorId}}" title="Restore this monster's original stats">Revert</button>
               {{/if}}

@@ -718,3 +718,64 @@
   Balance-Check auf dem Template (95/95 offene/schließende
   `{{#if}}`/`{{#each}}`), danach vom Nutzer selbst in seiner eigenen
   laufenden Foundry-Welt getestet und als funktionierend bestätigt.
+- Fünf unabhängige UI-Verbesserungen (seit 2026-08, auf Nutzerwunsch,
+  live gegen die Testwelt verifiziert):
+  1. **Lösch-Icons unterscheidbar**: der Encounter-Reset-Button (neben
+     "Encounter"/"Encounter HP") zeigt jetzt ein Trash-Icon (`fas
+     fa-trash`) statt reinem "×" und fragt vor dem Ausführen über
+     `DialogV2.confirm` nach ("Reset the entire encounter?") — bewusst
+     `DialogV2.confirm` statt rohem `confirm()` (wie ursprünglich
+     vorgeschlagen), um im etablierten Muster dieses Projekts zu bleiben
+     (siehe `#onDeletePreset`) statt eines stilfremden nativen
+     Browser-Dialogs. Preset-Delete und Zeilen-Delete (`×` auf
+     `deleteMonster`) bleiben unverändert, unkritisch genug für kein
+     Confirm. Live verifiziert: Klick → Dialog erscheint → "No" ändert
+     nichts → erneuter Klick → "Yes" leert die Liste, Party-Config bleibt.
+  2. **Boss/Minion als Toggle-Pills**: `<input type="checkbox">` → 
+     `<button class="eb-toggle-pill">`, aktiv = goldgefüllt (`#c9a227`,
+     wie `.eb-tab-button.active`), inaktiv = dezenter Rahmen.
+     `#onToggleMinionify` musste von `target.checked` auf
+     `!entry.minionify` umgestellt werden (Buttons haben kein
+     `.checked`); `#onToggleBoss` brauchte keine Änderung, war intern
+     schon Toggle-basiert (`!entry.isBoss`). Help-Dialog-Text "(checkbox
+     on an entry)" → "(button on an entry)" korrigiert. Live verifiziert:
+     Boss-Klick färbt sich gold, Boss-ify-Button erscheint; Minion-Klick
+     färbt Minion gold UND setzt Boss automatisch zurück auf inaktiv
+     (Mutual-Exclusivity-Logik unverändert korrekt), XP passt sich auf
+     den Minion-Wert an.
+  3. **Trenner Encounter-Header/Presets**: `border-top` (gleicher Ton wie
+     sonst im Modul, `rgba(255,255,255,0.15)`) plus `margin-top`/
+     `padding-top` auf `.preset-row` statt eines zusätzlichen `<hr>`-Tags
+     im Template — der Auftrag ließ beide Varianten offen, CSS-only
+     passt besser zum Rest des Stylesheets (kein `<hr>` anderswo im
+     Modul verwendet).
+  4. **Budget-Bar-Marker bei Überschreitung**: statt der Balken bei
+     Überschreitung einfach komplett rot wird, füllt er sich jetzt auf
+     100% (repräsentiert `spend.spent`), mit einem harten Farbwechsel per
+     inline `linear-gradient` an der Position `budgetMarkerPercent` (=
+     `budget / spend.spent`, in `_prepareContext()` berechnet — kann
+     rechnerisch nie über 100 liegen, da `overBudget` per Definition
+     `budget < spend.spent` bedeutet) plus einem dünnen `position:
+     absolute`-Marker-Strich an derselben Stelle. Die alte fixe
+     `.budget-fill.over`-Regel (komplett rot) wurde entfernt, da die
+     Farbe jetzt inline sitzt. Live verifiziert: Ice Devil (11500 XP) in
+     ein 9200-XP-Budget gelegt → Balken zeigt sauberen Grün→Rot-Übergang
+     bei ca. 80%, Marker-Strich an derselben Stelle, "OVER BUDGET"-Text
+     weiterhin rot. Nicht-Überschreitungsfall (einfacher grüner Fill bis
+     zum tatsächlichen Prozentsatz) ebenfalls live bestätigt, nachdem der
+     Encounter wieder auf Minion (1150 XP) reduziert wurde.
+  5. **Dice-Group im Item-Customize-Dialog**: `extraDamageNumber`/"d"/
+     `extraDamageDenomination` jetzt in einem eigenen
+     `<span class="dice-group">`-Wrapper (`gap: 0.15rem` statt der
+     äußeren `0.35rem`, `flex-shrink: 0`, kein eigenes `flex-wrap`) —
+     die drei Elemente brechen dadurch nur gemeinsam um, nie einzeln.
+     Der äußere Container (`.item-customize-extra-damage`) behält sein
+     `flex-wrap: wrap` für den Rest der Zeile (Damage-Type-Select,
+     Erklärtext). Live verifiziert an "Frost Brand Scimitar" mit
+     aktiviertem Extra-Damage-Type: "1 d 6" bleibt sichtbar als eine
+     enge Einheit zusammen, unabhängig davon, dass Damage-Type-Dropdown
+     und Erklärtext bei der schmalen Dialogbreite auf eigene Zeilen
+     umbrechen — Auto-Namensvorschlag ("Acid Frost Brand Scimitar")
+     weiterhin korrekt, keine Regression. Testdaten (das hinzugefügte
+     Item) danach wieder entfernt, keine Actors/Tokens erzeugt (nie
+     "Place Loot"/"Deploy Encounter" geklickt).

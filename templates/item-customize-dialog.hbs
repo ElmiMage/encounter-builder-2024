@@ -31,13 +31,15 @@
     </label>
     {{#if extraDamageEnabled}}
       <div class="item-customize-extra-damage">
-        <input type="number" name="extraDamageNumber" min="1" value="{{extraDamageNumber}}" />
-        <span>d</span>
-        <select name="extraDamageDenomination">
-          {{#each denominationOptions}}
-            <option value="{{this}}" {{#if (eq this ../extraDamageDenomination)}}selected{{/if}}>{{this}}</option>
-          {{/each}}
-        </select>
+        <span class="dice-group">
+          <input type="number" name="extraDamageNumber" min="1" value="{{extraDamageNumber}}" />
+          <span>d</span>
+          <select name="extraDamageDenomination">
+            {{#each denominationOptions}}
+              <option value="{{this}}" {{#if (eq this ../extraDamageDenomination)}}selected{{/if}}>{{this}}</option>
+            {{/each}}
+          </select>
+        </span>
         <select name="extraDamageType">
           {{#each damageTypeOptions}}
             <option value="{{this}}" {{#if (eq this ../extraDamageType)}}selected{{/if}}>{{humanize this}}</option>

@@ -132,6 +132,7 @@
   background: rgba(0, 0, 0, 0.3);
   border-radius: 7px;
   overflow: hidden;
+  position: relative;
 }
 
 .encounter-builder-2024 .budget-fill {
@@ -140,8 +141,14 @@
   transition: width 0.15s ease;
 }
 
-.encounter-builder-2024 .budget-fill.over {
-  background: #c62828;
+.encounter-builder-2024 .budget-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #e8e6e0;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
 }
 
 .encounter-builder-2024 .over-budget {
@@ -314,9 +321,7 @@
   font-size: 0.85em;
 }
 
-.encounter-builder-2024 .lair-toggle,
-.encounter-builder-2024 .boss-toggle,
-.encounter-builder-2024 .minion-toggle {
+.encounter-builder-2024 .lair-toggle {
   display: flex;
   align-items: center;
   gap: 0.2rem;
@@ -324,6 +329,32 @@
   opacity: 0.85;
   white-space: nowrap;
   cursor: pointer;
+}
+
+/* Boss/Minion toggles: filled pill buttons instead of checkboxes, so
+   "on" reads clearly at a glance without needing to inspect a small
+   checkbox — .active mirrors the filled/gold look of .eb-tab-button.active. */
+.encounter-builder-2024 .eb-toggle-pill {
+  font-size: 0.8em;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: transparent;
+  color: rgba(232, 230, 224, 0.75);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.encounter-builder-2024 .eb-toggle-pill:hover {
+  border-color: rgba(255, 255, 255, 0.5);
+  color: #e8e6e0;
+}
+
+.encounter-builder-2024 .eb-toggle-pill.active {
+  background: #c9a227;
+  border-color: #c9a227;
+  color: #1a1a17;
+  font-weight: 700;
 }
 
 .encounter-builder-2024 .delete-btn {
@@ -487,7 +518,13 @@
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  margin-top: 0.5rem;
   margin-bottom: 0.5rem;
+  padding-top: 0.5rem;
+  /* Visually separates preset management from the Encounter/Encounter HP/
+     Reset row directly above it — two distinct function groups that
+     previously ran together with no gap. */
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .encounter-builder-2024 .preset-row select {
@@ -646,6 +683,17 @@
 
 #encounter-builder-2024-item-customize-dialog .item-customize-extra-damage input[type="number"] {
   width: 3.5rem;
+}
+
+/* Number + "d" + denomination read as one unit ("1d6") — tighter gap than
+   the rest of the row, and flex-shrink: 0 so the group wraps to a new
+   line as a whole (inheriting .item-customize-extra-damage's flex-wrap)
+   instead of its own children ever wrapping or squeezing individually. */
+#encounter-builder-2024-item-customize-dialog .dice-group {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  flex-shrink: 0;
 }
 
 #encounter-builder-2024-item-customize-dialog .item-customize-hint {

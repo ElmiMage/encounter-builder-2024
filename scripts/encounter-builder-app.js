@@ -454,6 +454,11 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       spend,
       // For the progress bar: clamp visually at 100% even if over budget
       spendPercentClamped: Math.min(100, Math.round(spend.percentUsed * 100)),
+      // Only meaningful when over budget: the fill then represents
+      // spend.spent (not budget) at 100% width, with this marking where
+      // the actual budget line falls within it — always <=100 since
+      // overBudget implies budget < spend.spent.
+      budgetMarkerPercent: spend.overBudget ? Math.round((budget / spend.spent) * 100) : 0,
       presets: game.settings.get("encounter-builder-2024", "encounterPresets"),
     };
   }
@@ -731,7 +736,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
           <h3>Building the Encounter</h3>
           <p>Pick which compendiums to draw from, filter the monster list, and click <strong>+</strong> to add monsters — or use <strong>Auto-Fill Remaining</strong> to fill the rest of the budget automatically with matching monsters.</p>
           <p><strong>Boss Encounter</strong>: when checked, Auto-Fill spends most of the budget on one strong "boss" creature and the rest on a few supporting monsters, instead of spreading it evenly.</p>
-          <p><strong>Boss</strong> (checkbox on an entry): marks that monster as the boss, whether Auto-Fill picked it or you added it yourself. Only one monster can be the boss at a time.</p>
+          <p><strong>Boss</strong> (button on an entry): marks that monster as the boss, whether Auto-Fill picked it or you added it yourself. Only one monster can be the boss at a time.</p>
           <p><strong>Boss-ify…</strong>: opens a dialog to make the boss tougher. Pick RAW (no change), Moderate, High, or Deadly — this scales the boss's HP and damage up (with a small boost to AC and ability scores too), so a single boss can actually threaten a whole party.</p>
           <p><strong>Minion</strong>: turns a monster into a fragile "minion" with fixed low HP and fixed damage (no rolling) — great for fast, disposable group fights. Costs much less of the XP budget, so a crowd of them is affordable.</p>
           <p><strong>Lair</strong>: marks a monster as fighting in its own lair, correctly increasing its XP cost per the 2024 rules (only shown for monsters that actually have lair actions).</p>
@@ -891,7 +896,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   static #onToggleMinionify(event, target) {
     const entry = this.encounter.get(target.dataset.uuid);
     if (!entry) return;
-    entry.minionify = target.checked;
+    entry.minionify = !entry.minionify;
     if (entry.minionify && entry.isBoss) {
       // Boss and Minion are mutually exclusive — becoming a minion steps
       // this entry down from boss status.
@@ -972,7 +977,13 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
    * encounter, but clearing them automatically would also wipe out any
    * manually-added items, which aren't tied to the encounter at all.
    */
-  static #onReset(event, target) {
+  static async #onReset(event, target) {
+    const confirmed = await foundry.applications.api.DialogV2.confirm({
+      window: { title: "Reset Encounter" },
+      content: "<p>Reset the entire encounter? This clears every monster in the list — party config and filters are kept.</p>",
+    });
+    if (!confirmed) return;
+
     this.encounter = new Map();
     this.autoFillWarning = null;
     this.render();
