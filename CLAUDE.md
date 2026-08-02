@@ -258,3 +258,429 @@
   Drag — das bleibt dem bestehenden "Zur Encounter-Liste hinzufügen +
   Create Combat"-Pfad vorbehalten. Item-Drag aus dem Loot-Tab wäre
   identisch umsetzbar, war aber nicht Teil dieses Auftrags.
+- Item-Drag aus dem Loot-Tab (s.o.) landete anfangs stillschweigend
+  nirgends, wenn kein Item-Piles-Modul aktiv ist — Ursache in Foundry
+  Core selbst gefunden: `Canvas#_onDrop` (`client/canvas/board.mjs`)
+  hat einen `switch(data.type)` mit Fällen für `Actor`, `JournalEntry(Page)`,
+  `Macro`, `PlaylistSound`, `Tile`, aber KEINEN für `Item` — unser
+  Drag-Payload ist korrekt, Core tut damit einfach nichts. Item Piles
+  funktioniert nur, weil es selbst einen `dropCanvasData`-Hook
+  registriert. Auf Nutzerwunsch bewusst kein eigener Fallback-Loot-Pile
+  gebaut (das wäre deutlich mehr Scope); stattdessen in `main.js` ein
+  eigener `dropCanvasData`-Hook, der bei `type === "Item"` und fehlendem
+  aktivem `item-piles`-Modul eine `ui.notifications.warn` zeigt statt des
+  stillen Fehlschlags. Live verifiziert (2026-08): Warnung erscheint
+  ohne Item Piles, kein Verhaltensunterschied mit aktivem Item Piles.
+- Party-Sync (`#syncFromPartyActor`, encounter-builder-app.js) zählte
+  bisher immer die volle Roster-Liste von `game.actors.party` (dnd5e's
+  Group-Actor-`playerCharacters`-Getter), unabhängig davon, wer an einem
+  Spielabend tatsächlich dabei ist — auf Nutzerwunsch (Gruppe hat 6
+  Charaktere im Party-Actor, spielt aber oft nur zu 3-4) erweitert:
+  zählt jetzt zuerst, wie viele Roster-Mitglieder einen Token auf der
+  aktiven Szene haben (`canvas.scene.tokens` gegen die
+  `playerCharacters`-Actor-IDs abgeglichen) und nimmt bei Treffern nur
+  deren Anzahl/Level (gleiche Rundungslogik wie dnd5e's eigener
+  `GroupData#level`-Getter, hier repliziert, da wir nur die
+  Präsenz-Teilmenge mitteln wollen). Fällt auf die volle Roster-Liste
+  zurück, wenn niemand vom Roster einen Token auf der Szene hat (Planung
+  vor dem Platzieren, oder Theater-of-the-Mind ohne Tokens). Live
+  verifiziert (2026-08): mit 6 Roster-Charakteren, aber nur 3-4
+  platzierten Spieler-Tokens auf der Szene, berechnet "Sync from Party"
+  Level/Size korrekt nur aus den anwesenden 3-4.
+- Minion-ify/Boss-ify-Actor-Reuse bei Create Combat (encounter-builder-app.js,
+  monster-scaling.js): live gegen die laufende Welt getestet (2026-08, 7x
+  Goblin mit Minion-ify in einer Encounter-Liste, "Create Combat"). Ergebnis
+  wie erwartet — 7 Tokens, aber genau EIN Actor `"Goblin (Minion)"` im
+  "Encounter Builder"-Ordner (`sourceUuid`-Flag korrekt gesetzt,
+  `minionifySnapshot` vorhanden, `prototypeToken.actorLink: false`).
+  Sicherheitscheck bestätigt: einem der 7 Tokens per `token.actor.update()`
+  HP abgezogen — nur dieser Token fiel auf 1 HP, die übrigen 6 blieben bei
+  6 HP, der zugrunde liegende Actor selbst ebenfalls bei 6 HP (unlinked
+  Tokens tragen ihre eigene HP-Kopie, kein geteilter Pool). Cross-Run-Reuse
+  (Lookup über `game.actors.find` mit `sourceUuid` + `minionifySnapshot`,
+  für einen HYPOTHETISCHEN zweiten Create-Combat-Lauf mit derselben
+  Konfiguration) direkt gegen die Live-Datenbank verifiziert — findet den
+  bereits erzeugten Actor korrekt. Boss-ify-Variante (tier-spezifischer
+  Key) strukturell identisch, aber in dieser Runde nicht separat live
+  durchgeklickt. Anmerkung zur Testumgebung: automatisierte Klicks auf
+  ApplicationV2-Actions-Buttons (`data-action="..."`) benötigen in dieser
+  Browser-Session einen empirisch ermittelten Skalierungsfaktor (~2.54)
+  zwischen den vom Screenshot-Tool erwarteten Koordinaten und echten
+  Seiten-Pixeln — sonst treffen Klicks daneben, ohne Fehlermeldung. Zwei
+  produktive Nebenfunde dabei: Foundrys eigener Encounter-Tracker-Header
+  hat einen "Create Encounter"-Button mit demselben `data-action="createCombat"`
+  wie unser eigener Button (Namenskollision) — ein zu ungenauer
+  `document.querySelector('[data-action="createCombat"]')`-Aufruf trifft
+  sonst den falschen; per Scoping auf `#encounter-builder-2024` behoben.
+  Und: gehoverte/mit Mittelklick "gepinnte" Compendium-Tooltips
+  (`.dnd5e-tooltip.item-tooltip`, "Middle-click to lock") können sich als
+  eigenständiges Overlay über der App legen und deren Buttons blockieren —
+  liegt an Foundrys eigenem Tooltip-System, nicht an diesem Modul.
+- Encounter-Presets (speichern/laden, seit 2026-08): world-scoped
+  `config:false`-Setting `encounterPresets` (main.js) — bewusst nicht
+  client-scoped wie die übrigen Preference-Settings, da Presets
+  vorbereiteter Inhalt sind, kein persönliches Tool-Preference; jeder GM
+  in der Welt sieht dieselbe Liste. Speichert pro Preset nur
+  Party Level/Size/Difficulty plus je Monster uuid+count+Boss-/Minion-ify-
+  Konfiguration (keine Monster-Snapshot-Kopie) — beim Laden wird jedes
+  uuid frisch gegen `this.monsterIndex` (nur aktuell aktivierte
+  Kompendien) aufgelöst; nicht auffindbare Einträge (Kompendium
+  deaktiviert oder Inhalt entfernt) werden übersprungen, mit einer
+  Sammel-Warnung, analog zum bestehenden `failedMonsters`-Muster in
+  `#onCreateCombat`. UI: neue `.preset-row` im Encounter-Tab
+  (Dropdown + Load/Save As…/Delete), "Save As…" nutzt
+  `DialogV2.input` für die Namensabfrage (überschreibt bei
+  Namenskollision), "Delete" nutzt `DialogV2.confirm`. Live verifiziert
+  (2026-08): Preset mit 2 Monstern (eines davon Boss/Moderate-Tier mit
+  gemischten Apply-Flags) gespeichert, Encounter-Liste geleert, Preset
+  geladen — alle Felder (Party Level/Size/Difficulty, Count, isBoss,
+  bossifyTier, alle vier Apply-Flags) kamen 1:1 zurück, inklusive
+  automatisch wieder aktiviertem `bossMode` (sonst wäre die Boss-Checkbox
+  für den geladenen Eintrag unsichtbar gewesen). Delete-Dialog
+  (Yes/No-Bestätigung) ebenfalls live durchgeklickt, Setting danach
+  korrekt leer. Erzeugt keine Actors/Tokens/Combats, daher kein
+  Cleanup-Bedarf nach dem Test.
+  Nachtrag (noch 2026-08, auf Nutzerwunsch): der Treasure-Hoard-Plan
+  (`this.lootPlan` — Coins, Gems/Art, Rarity-Zähler, die flache
+  Item-Liste inkl. `source:"rolled"|"manual"`) wird jetzt mitgespeichert,
+  falls beim Save schon einer gerollt wurde — bewusst nicht die
+  Individual-Treasure-Liste (Loot-Tab), das war nicht Teil des Wunsches
+  und ist ohnehin an die aktuelle Encounter-Zusammensetzung gekoppelt.
+  `lootPlan`/`hoardLootBasis` werden nur gesetzt, wenn im Preset
+  vorhanden — ältere Presets ohne dieses Feld laden weiterhin
+  fehlerfrei, ohne den aktuell offenen Hoard zu überschreiben. Live
+  verifiziert: Hoard gerollt (Party Level 5, Tier "5-10"), zusätzlich
+  ein Item manuell per Suche hinzugefügt (`source:"manual"`), als Preset
+  gespeichert, App-State geleert, Preset geladen — beide Items (das
+  gerollte UND das manuell hinzugefügte) kamen exakt zurück, inklusive
+  Coins/Gems/`hoardLootBasis`, im Hoard-Tab auch visuell bestätigt.
+  Zweiter Nachtrag (noch 2026-08, auf Nutzerwunsch nach eigener
+  Feldnamen-Durchsicht): zwei Umbenennungen mit Rückwärtskompatibilität.
+  (1) Preset-Schema `entries` → `monsters` (las sich in einem rohen
+  Settings-Dump nicht sofort als Monsterliste); Laden liest
+  `preset.monsters ?? preset.entries`, alte Presets funktionieren
+  weiter. (2) Das App-interne Feld `this.lootPlan` (samt
+  `#ensureLootPlan`/`lootPlanCoins`/`lootPlanGemsOrArt`/`lootPlanItems`/
+  `lootTierBasis`, den Form-Feldnamen `lootCoin-*`/`lootGemsArt*`/
+  `lootRarity-*` und den Actions `rollLoot`/`rerollLoot`) hieß
+  verwirrend ähnlich wie der tatsächliche **"Loot"-Tab** (Individual
+  Treasure, `individualTreasureResult`), meinte aber immer den
+  **Hoard**-Tab-Plan — komplett auf `hoardPlan`/`#ensureHoardPlan`/
+  `hoardPlanCoins`/`hoardPlanGemsOrArt`/`hoardPlanItems`/
+  `hoardTierBasis`/`hoardCoin-*`/`hoardGemsArt*`/`hoardRarity-*`/
+  `rollHoard`/`rerollHoard` umbenannt (Methode `#rollHoardPlan()` hieß
+  schon vorher richtig — Inkonsistenz war der Auslöser für den Fund).
+  Preset-Feld entsprechend `lootPlan` → `hoardPlan`, Laden liest
+  `preset.hoardPlan ?? preset.lootPlan`. `lootItemIndex`/
+  `lootCompendiums`/`disabledLootCompendiums`/`toggleLootCompendium`/
+  `addLootItem` etc. bewusst NICHT umbenannt — die sind echt geteilte
+  Item-Infrastruktur für beide Tabs, nicht Hoard-spezifisch. Zusätzlich:
+  neue `.preset-row`-CSS-Regel (`display:flex`), damit Dropdown +
+  Load/Save As…/Delete in einer Zeile statt gestapelt erscheinen
+  (Nutzer-Feedback per Screenshot). Live verifiziert: Preset mit Hoard
+  gespeichert → Settings-Objekt trägt korrekt `monsters`/`hoardPlan`;
+  ein synthetisch injiziertes Alt-Format-Preset (`entries`+`lootPlan`)
+  lud trotzdem korrekt (Monster UND Hoard-Tier kamen zurück) — Fallback
+  bestätigt. Preset-Zeile rendert jetzt einzeilig (32px Höhe statt
+  gestapelt).
+  Dritter Nachtrag (noch 2026-08): zwei weitere UI-Text-Korrekturen aus
+  derselben Feldnamen-Durchsicht (nicht Code, sondern sichtbare Labels)
+  — der Tab hieß schlicht "Loot" (Navigation), obwohl er laut eigener
+  Tab-Überschrift "Individual Treasure" ist, uneindeutig neben
+  "Treasure Hoard"; jetzt "Individual Treasure" in der Nav. Der
+  Hoard-Tab-Button hieß "Roll Suggested Loot (DMG 2024)", jetzt "Roll
+  Suggested Hoard (DMG 2024)". Help-Dialog entsprechend mitgezogen
+  (`<h3>Loot</h3>` → `<h3>Individual Treasure</h3>`), plus ein neuer
+  Absatz zu Save As…/Load/Delete (fehlte bisher komplett).
+- Item-Typ-Filter für Loot-/Hoard-Tab (`item-categories.js`, seit
+  2026-08, auf Nutzerwunsch): dnd5e hat KEIN eigenes Feld für
+  DMG-Sprachgebrauch wie "Armor" vs. "Wondrous Item" — beide sind
+  `type: "equipment"`, nur über `system.type.value` unterscheidbar.
+  Mapping gegen die live installierte dnd5e-5.3.3-Quelle verifiziert
+  (`CONFIG.DND5E.equipmentTypes`/`consumableTypes`/`lootTypes`), nicht
+  geraten: Armor = `type:"equipment"` + Subtyp
+  light/medium/heavy/natural/shield; Ring/Rod/Wand je eigene Kategorie;
+  alles übrige `equipment` (clothing/trinket/vehicle/"wondrous"/leer)
+  → "Wondrous Item" (dnd5e's eigener Catch-all-Subtyp "wondrous" wird
+  tatsächlich von ~201 Items im installierten Content genutzt, z.B.
+  Belts of Giant Strength, Ioun Stones — live gegen den Index gezählt).
+  `type:"loot"` (Subtypen art/gear/gem/junk/material/resource/trade/
+  treasure) bekommt eine eigene Kategorie "Loot", NICHT "Wondrous
+  Item" — das sind Werte/Sachgüter, keine Magic-Item-Table-Einträge.
+  Kategorie wird einmalig beim Index-Aufbau berechnet
+  (`loadItemIndex()` in loot-generator.js, neues `category`-Feld pro
+  Eintrag) und wie `getAvailableRarities` nur mit tatsächlich
+  vorhandenen Werten befüllt (`getAvailableCategories`). Reine,
+  deterministische Zuordnungslogik (kein RNG) — mit
+  `node --check` + 22 Hand-Assertions abgesichert (jede Kombination
+  aus itemType+typeValue aus der obigen Aufzählung, plus Edge Cases
+  wie unbekannter itemType → "Other"). Live verifiziert: Filter auf
+  "Weapon" reduziert die Item-Liste korrekt von 1035 auf 318 (nur
+  Waffennamen); "Armor" zeigt ausschließlich echte Rüstungsteile
+  (Studded Leather, Plate, Chain Shirt, …); "Wondrous Item" zeigt
+  klassische Wondrous Items (Ioun Stone, Rope of Climbing, Robe of
+  Useful Items, …) OHNE die Ring/Rod/Wand-Einträge, die ihre eigene
+  Kategorie bekommen — genau der Trennungsfall, wegen dem die feinere
+  (statt der einfachen Top-Level-`itemType`-) Variante gewählt wurde.
+- Footer-Buttons umbenannt (seit 2026-08, auf Nutzerwunsch): "Generate
+  Loot" → "Place Loot", "Create Combat" → "Deploy Encounter" — reine
+  Anzeigetext-Änderung, `data-action="generateLoot"`/`"createCombat"`
+  und die zugehörigen Methodennamen (`#onGenerateLoot`/
+  `#onCreateCombat`) blieben unverändert, da sie weiterhin exakt
+  beschreiben was im Code passiert (ein Loot-Actor wird generiert, ein
+  Combat-Dokument wird erzeugt). Bewusst NICHT "Place Monster(s)" für
+  den zweiten Button gewählt (ursprünglicher Vorschlag) — der Button
+  legt tatsächlich ein echtes `Combat`-Dokument an und trägt jedes
+  Monster als Combatant ein (`encounter-builder-app.js:1351-1357`),
+  nicht nur Tokens; "Place Monster(s)" hätte das verschleiert und mit
+  dem bestehenden reinen Token-Drag-and-Drop verwechselbar gemacht.
+  Help-Dialog-Text und ein Code-Kommentar entsprechend mitgezogen.
+  Live verifiziert: "Deploy Encounter" legt weiterhin korrekt Token +
+  Combat mit Combatant an (funktional unverändert, nur der Label-Text
+  ist neu).
+- Item-Customize-Feature ("Customize…"-Button je Loot-/Hoard-Item, seit
+  2026-08, auf Nutzerwunsch — analog zu Boss-ify, aber für Items statt
+  Monster): Homebrew-Dialog, mit dem ein GM ein mundanes/generisches
+  Loot-Item VOR dem Materialisieren (vor "Place Loot") individualisiert
+  — eigener Name, fester Magic-Bonus (0/+1/+2/+3), zusätzlicher
+  Schadenstyp (z.B. "+1d6 Acid" oben drauf). Bewusst kein DMG-Tabellen-
+  Nachschlagen wie bei Boss-ify — es gibt dafür keine offizielle
+  Tabelle, ist explizit als Hausregel gekennzeichnet (Hinweistext im
+  Dialog).
+  Mechanik (`item-customization.js`, reine Logik, `node --check` + 6
+  Hand-Assertions): nutzt ausschließlich echte dnd5e-Felder statt
+  irgendwas Neues zu erfinden — `system.magicalBonus` (dasselbe Feld,
+  das die 2024-Template-Magic-Items nutzen, siehe voriger Eintrag) für
+  den Bonus, ein neuer Eintrag in der Attack-Activity's
+  `damage.parts`-Array für den Zusatzschaden, `"mgc"`-Properties-Flag
+  automatisch gesetzt sobald irgendwas davon greift. Datenform
+  `system.activities` beim Anwenden ist ein Objekt (keyed by activity
+  id), NICHT ein Array — verifiziert gegen `Item#toObject()` auf einem
+  echten Kompendium-Item (Longsword +1), dieselbe Form, die
+  `createLootActor()` schon nutzt. Wichtiger Stolperstein, live
+  entdeckt: `item.system.activities` auf einem LIVE/instanziierten
+  Foundry-Dokument ist NICHT das gleiche wie auf dem `.toObject()`-
+  Ergebnis — `Object.values(activities)` liefert auf der Live-Instanz
+  fälschlich `[]` (Collection statt Plain Object), erst
+  `.contents` liefert die echten Activity-Objekte. Betrifft nur
+  Debugging/Verifikation gegen Live-Actors, nicht die eigentliche
+  Anwendungslogik (die läuft ausschließlich auf `.toObject()`-Daten,
+  also korrekt als Objekt).
+  Datenmodell/Timing (`item-customize-dialog.js`,
+  `encounter-builder-app.js`): Items im Loot-Plan sind bis "Place Loot"
+  nur eine leichte Vorschau (`{key, uuid, name, img, rarity, count,
+  source, customization?}`), noch kein echtes Foundry-Item — der Dialog
+  schreibt die Anpassung nur auf den Plan-Eintrag zurück (mirrort
+  BossifyDialog: schreibt nur `bossifyTier`+Apply-Flags auf den
+  Encounter-Eintrag, wendet nichts direkt an), `applyItemCustomization`
+  läuft erst in `createLootActor()` beim Materialisieren. Hat count>1
+  ein Eintrag, wird beim Anpassen EINE Kopie abgespalten (count-1 auf
+  dem Original, neuer Eintrag mit count:1 + der Customization) —
+  verhindert, dass "Anpassen" versehentlich alle Kopien eines Stacks
+  gleichzeitig verzaubert. Das erforderte eine echte Architektur-
+  Änderung: Loot-Items wurden bisher ausschließlich per `uuid`
+  identifiziert (`data-uuid` in den +/−/×-Buttons, `container.items.
+  find(i => i.uuid === uuid)`) — sobald zwei Zeilen dieselbe Quelle
+  teilen (ein normaler Stack + eine abgespaltene Custom-Kopie), wäre
+  das mehrdeutig geworden (erster Treffer im Array gewinnt). Jeder
+  Eintrag bekommt jetzt zusätzlich ein stabiles `key`-Feld
+  (`foundry.utils.randomID()`); +/−/×/Customize auf einer Plan-Zeile
+  zielen jetzt auf `key` (mit Fallback `i.key ?? i.uuid` für alte, vor
+  diesem Feature gespeicherte Presets/Einträge ohne `key`), während der
+  "+"-Button aus der Kompendium-Browserliste weiterhin klassisch nach
+  `uuid` einen passenden NICHT-customized Stack sucht oder neu anlegt
+  (`#onAddLootItem` unterscheidet die zwei Aufrufer über
+  `target.dataset.key` vs. `target.dataset.uuid`). Extra-Schadenstyp-
+  Feld im Dialog nur sichtbar, wenn das per `fromUuid()` frisch
+  geladene Quell-Item `type === "weapon"` ist (Rüstung/Wand/etc.
+  bekommen nur Name+Bonus). Live verifiziert (2026-08): "Longsword +1"
+  mit count 2 in den Hoard-Plan gelegt, eine Kopie über "Customize…" zu
+  "Acid Longsword" (Bonus +2, +1d6 Acid) gemacht → Plan zeigt danach
+  korrekt zwei getrennte Zeilen (1x "Longsword +1" unverändert, 1x
+  "Acid Longsword" mit ✨-Marker). Nach "Place Loot": echtes Item
+  "Acid Longsword" auf dem Hoard-Actor mit `magicalBonus:"2"`,
+  `properties` enthält `"mgc"`, Attack-Activity hat zwei Damage-Parts
+  (Basis 1d8 slashing + injizierter 1d6 acid) — die unangetastete
+  zweite Kopie ("Longsword +1") blieb korrekt bei `magicalBonus:"1"`
+  ohne Zusatzschaden.
+  Echter Bug, vom Nutzer gemeldet und noch am selben Tag behoben
+  (2026-08): "im Treasure-Hoard-Tab reagiert keiner der Item-Buttons
+  mehr (+/−/×/Customize), im Individual-Treasure-Tab aber schon".
+  Ursache: `resolveMagicItems()` (loot-generator.js, von
+  `suggestLootPlan`/`suggestSmoothedLootPlan` genutzt — der Pfad, den
+  "Roll Suggested Hoard" tatsächlich nimmt) erzeugte Items bislang OHNE
+  das neue `key`-Feld aus dem vorigen Nachtrag. Das Template rendert
+  dann `data-key=""` (leerer String, nicht das Wort "undefined"), die
+  Klick-Handler suchen aber `(i.key ?? i.uuid) === ""` — `i.uuid` ist
+  nie ein leerer String, also nie ein Treffer: jeder Button auf einem
+  gerollten Item war ein stiller No-op. Der Individual-Treasure-Tab
+  betraf das nicht, weil der Nutzer dort Items über die durchsuchbare
+  Liste manuell hinzugefügt hatte (`#onAddLootItem`s Browser-Pfad
+  vergibt schon immer einen echten `key`) — "Roll Individual Treasure"
+  selbst legt gar keine Items an, nur Coins. Doppelt behoben: (1)
+  `resolveMagicItems()` vergibt jetzt auch `key: foundry.utils.
+  randomID()` direkt beim Erzeugen. (2) Neue defensive Absicherung
+  `#withDisplayFields()` (ursprünglich `#withDisplayKey()`, seit dem
+  Nachtrag unten um `canCustomize` erweitert und umbenannt) in
+  `_prepareContext` mappt `hoardPlanItems`/`individualTreasureItems` so,
+  dass ausnahmslos jedes Item, das beim Template ankommt, einen
+  nutzbaren `key` hat (Fallback auf `uuid`, wenn keiner gesetzt ist) —
+  schützt zusätzlich vor genau diesem Leerstring-Mismatch bei jeder
+  zukünftigen Item-Erzeugungsstelle und bei alten, vor diesem Fix
+  gespeicherten Presets. Live reproduziert (Hoard gerollt, `data-key=""`
+  am Button bestätigt, Klick verifiziert wirkungslos) und nach dem Fix
+  erneut verifiziert (`data-key` trägt jetzt eine echte ID, "−" entfernt
+  korrekt das richtige gerollte Item, "Customize…" öffnet den Dialog für
+  das richtige Item).
+  Nachtrag (noch 2026-08, Nutzer-Bugreport): Magic Bonus auf Rüstungen
+  wurde im Dialog akzeptiert, landete aber nie auf dem echten Item.
+  Ursache live gegen die 2024-Template-Items verifiziert: Waffen (und
+  Wands, Rings, Rods, Wondrous Items — alles NICHT-Rüstungs-`equipment`)
+  nutzen den Top-Level-Pfad `system.magicalBonus`, aber Rüstungen UND
+  Schilde (equipment mit Subtyp light/medium/heavy/natural/shield)
+  nutzen stattdessen den verschachtelten Pfad
+  `system.armor.magicalBonus` — bestätigt an den offiziellen 2024
+  "Armor, +1, +2, or +3"/"Shield, +1, +2, or +3"/"Wand of the War Mage,
+  +1, +2, or +3"-Items (deren eigene Active Effects genau diese
+  Pfad-Aufteilung zeigen). `applyItemCustomization()` bestimmt jetzt die
+  Kategorie über `categorizeItem()` (dieselbe Funktion wie der
+  Item-Typ-Filter) und schreibt auf den jeweils richtigen Pfad.
+  Zusätzlich auf Nutzerwunsch: (1) der "Customize…"-Button erscheint in
+  der Liste jetzt nur noch für Weapon/Armor-Einträge (`canCustomize` in
+  `#withDisplayFields`, siehe oben) — andere Kategorien können
+  mechanisch ohnehin keinen Magic Bonus nutzen; Einträge ohne bekannte
+  `category` (alte Presets) zeigen den Button weiterhin sicherheitshalber.
+  (2) Für Rüstungen ersetzt "Extra Resistance Type" das bei Waffen
+  gezeigte "Extra Damage Type" — Mechanik live gegen echte
+  Resistenz-Items (Ring of Fire Resistance, 2024 "Armor of Resistance")
+  verifiziert: ein neuer Active Effect mit `transfer:true` und
+  `system.traits.dr.value`-ADD-Change, NICHT ein `damage.parts`-Eintrag
+  (komplett anderer Mechanismus als Extra-Schaden). Resistenz-Dropdown
+  enthält zusätzlich zu den 10 Energie-Typen auch Bludgeoning/Piercing/
+  Slashing (`EXTRA_RESISTANCE_TYPES` in item-customization.js) — reine
+  physische Resistenz ohne "nur gegen nichtmagische Angriffe"-Nuance
+  (`traits.dr.bypasses`), bewusst nicht nachgebildet, um den Scope klein
+  zu halten. `resolveMagicItems()`/`#onAddLootItem`s Browser-Pfad
+  schreiben jetzt beide ein `category`-Feld auf jeden Plan-Eintrag
+  (vorher nur im Item-Browser-Index vorhanden, nicht auf dem Plan
+  selbst). Hand-Assertions erweitert (7 Fälle: Waffen-Bonus top-level,
+  Rüstungs-Bonus verschachtelt, Schild-Bonus verschachtelt, Wand-Bonus
+  top-level, Resistenz-Effect-Form, physischer Resistenztyp,
+  No-Op-Fall). Live verifiziert: "Studded Leather Armor +3" mit Bonus
+  +2 und Fire-Resistance angepasst → nach "Place Loot" hat das echte
+  Item `system.armor.magicalBonus:"2"` (NICHT `system.magicalBonus`),
+  `"mgc"`-Flag, und einen Effect `{name:"Fire Resistance", transfer:
+  true, changes:[{key:"system.traits.dr.value", value:"fire", mode:2}]}`
+  — exakt die gegen echte Items verifizierte Form. "Ring of Protection"
+  (Kategorie "Wondrous Item") zeigt korrekt keinen Customize-Button mehr.
+  Nachtrag (noch 2026-08, auf Nutzerwunsch): der Magic-Bonus-Dropdown
+  im Dialog deaktiviert jetzt Optionen, die kleiner-gleich dem bereits
+  vorhandenen Bonus der Quell-Waffe/-Rüstung sind (z.B. bei "Longsword
+  +1" ist "+1" ausgegraut, "+2"/"+3" bleiben wählbar; bei "Longsword +3"
+  sind alle drei Stufen ausgegraut) — verhindert, dass eine Auswahl das
+  Item versehentlich HERABSTUFT, da `applyItemCustomization()` den
+  Bonus überschreibt statt addiert. "None" bleibt immer wählbar (lässt
+  den vorhandenen Bonus unangetastet, siehe Kommentar in
+  `applyItemCustomization()`). Vorhandener Bonus wird pro Kategorie am
+  frisch geladenen Quell-Item gelesen (`system.armor.magicalBonus` für
+  Armor, sonst `system.magicalBonus`) — derselbe Pfad-Unterschied wie
+  im vorigen Nachtrag. Live verifiziert: "Longsword +1" → nur "+1"
+  deaktiviert; "Longsword +3" → alle drei Stufen deaktiviert, nur
+  "None" bleibt übrig.
+  Nachtrag (noch 2026-08, auf Nutzerwunsch): Custom-Name-Feld füllt
+  sich jetzt automatisch aus Basisname + gewähltem Bonus/Schadenstyp/
+  Resistenztyp — `suggestItemName()` in item-customization.js, reine
+  Logik mit 7 Hand-Assertions. Beispiel genau wie vom Nutzer gewünscht:
+  "Longsword" + Bonus 2 + Schadenstyp Acid → "Acid Longsword +2".
+  Rüstungen nutzen das DMG-typische "of X Resistance"-Suffix statt
+  eines Präfixes (z.B. "Studded Leather Armor +1 of Fire Resistance"),
+  passend zu den echten "Armor of Resistance"/"Ring of Fire
+  Resistance"-Namensmustern. Vorschlag basiert IMMER auf dem frisch
+  geladenen Original-Kompendium-Item (`#sourceItem.name`), nie auf dem
+  aktuellen (evtl. schon vorher customized) Plan-Namen — sonst würde
+  ein erneutes Anpassen Präfixe/Suffixe aufstapeln statt zu ersetzen.
+  Vorhandene "+N"-Endung im Basisnamen wird vor dem Neuaufbau entfernt.
+  Automatik schaltet sich ab, sobald der GM selbst ins Namensfeld
+  tippt (`customNameTouched`-Flag) — danach überschreiben weitere
+  Bonus-/Typ-Änderungen den manuell eingegebenen Namen nicht mehr;
+  Leeren des Felds aktiviert die Automatik wieder. Live verifiziert:
+  "Longsword +1" → Bonus +2 gewählt → Name wurde zu "Longsword +2";
+  danach Acid-Schaden aktiviert → Name automatisch zu "Acid Longsword
+  +2" aktualisiert; danach manuell zu "Vitriol Blade" umbenannt und
+  Schadenstyp auf Fire geändert → Name blieb korrekt bei "Vitriol
+  Blade" (keine Überschreibung mehr).
+  Korrektur (noch 2026-08, auf Nutzerwunsch nach erstem Test): Format
+  für Rüstungen war noch nicht ganz richtig. Zwei Änderungen: (1) Der
+  Bonus steht jetzt bei JEDER Kategorie am Ende, nicht mehr direkt
+  nach dem Basisnamen bei Rüstungen — vorher "Armor +1 of Fire",
+  jetzt "Armor of Fire +1". (2) Resistenz zeigt nur noch den reinen
+  Typ ohne das Wort "Resistance" — vorher "of Fire Resistance", jetzt
+  schlicht "of Fire", analog zum Präfix-Muster bei Waffen ("Acid
+  Longsword", kein "Acid Damage Longsword"). Live verifiziert:
+  "Studded Leather Armor +3" → Bonus +1 + Fire-Resistance →
+  "Studded Leather Armor of Fire +1".
+  Zweite Korrektur (noch 2026-08, Nutzer-Feedback): war ein bereits
+  vorhandener Bonus auf der Quell-Waffe/-Rüstung (z.B. "Longsword +1")
+  gesetzt und der GM wählte im Dialog NUR Extra-Schaden/-Resistenz
+  ohne den Magic-Bonus-Dropdown anzufassen (bleibt auf "None" — das
+  lässt den vorhandenen Bonus mechanisch bewusst unangetastet, siehe
+  `applyItemCustomization`), fehlte der vorhandene Bonus im
+  Namensvorschlag komplett ("Acid Longsword" statt "Acid Longsword
+  +1"). `#applyNameSuggestion()` in item-customize-dialog.js nutzt
+  jetzt den EFFEKTIVEN Bonus (gewählter Dropdown-Wert, falls >0, sonst
+  der bereits vorhandene Bonus über `#existingBonus()`) statt nur den
+  rohen Dropdown-Wert. Live verifiziert: "Longsword +1", Bonus-Dropdown
+  unverändert auf "None" belassen, nur Acid-Schaden aktiviert →
+  Namensvorschlag korrekt "Acid Longsword +1". Auf Nutzerwunsch auch
+  für Armor nachgetestet: "Studded Leather Armor +1", Bonus-Dropdown
+  auf "None" belassen, nur Fire-Resistance aktiviert → korrekt
+  "Studded Leather Armor of Fire +1" (vorhandener Bonus erscheint auch
+  hier korrekt am Ende, Kategorie-Pfad-Unterscheidung funktioniert für
+  beide Fälle identisch).
+- Rarity-Skalierung beim Item-Customize (seit 2026-08, auf
+  Nutzerwunsch): explizit Stephans eigene Hausregel-Vermutung
+  ("jeder +1 Bonus erhöht es um eine Stufe, jedes Extra zählt auch als
+  +1"), keine DMG-Tabelle — `suggestRarity()` in item-customization.js.
+  Stufen = effektiver Bonus (siehe voriger Nachtrag) + 1 pro aktiviertem
+  Extra (Schadenstyp bei Waffen, Resistenz bei Rüstungen), gezählt ab
+  "common" (Index 0) auf `RARITY_TIERS`. Deckungsgleich mit den echten
+  2024-Template-Items für Waffen (Bonus 1 allein → Index 1 = "uncommon",
+  genau wie "Weapon +1"; Bonus 2 → "rare", wie "Weapon +2") — bewusst
+  NICHT die Buch-Asymmetrie nachgebildet, dass Rüstungs-Boni offiziell
+  eine Stufe seltener sind als gleich hohe Waffen-Boni (siehe
+  vorletzter Nachtrag) — dieselbe Formel für beide Kategorien, um bei
+  Stephans einfacher Regelbeschreibung zu bleiben. Nie eine Abwertung:
+  das Maximum aus aktueller Rarity und berechneter Ziel-Rarity gewinnt.
+  Wird im Dialog beim Apply berechnet (nicht erst beim Materialisieren)
+  und direkt auf den Plan-Eintrag geschrieben, damit die Liste sofort
+  die neue Seltenheit zeigt — `applyItemCustomization()` liest beim
+  "Place Loot" nur noch `customization.rarity` statt es erneut zu
+  berechnen. 8 Hand-Assertions (u.a. Bonus-1-allein-Fall gegen die
+  echten Template-Items geprüft, Downgrade-Schutz, Artifact-Deckelung).
+  Live verifiziert: "Longsword +1" (uncommon) → Bonus +2 + Acid-Schaden
+  gewählt (effektiver Bonus 2 + 1 Extra = 3 Stufen) → Plan zeigt
+  sofort "veryRare"; nach "Place Loot" hat das echte Item
+  `system.rarity:"veryRare"` und `system.magicalBonus:"2"`.
+  Korrektur (noch 2026-08, auf Nutzerwunsch): Rüstung und Waffe
+  sollten sich UNTERSCHEIDEN statt derselben Formel zu folgen — auf
+  Nachfrage stellte sich heraus, dass das exakt die echte DMG-2024-
+  Asymmetrie zwischen Waffen- und Rüstungs-Boni widerspiegelt, die vorher
+  bewusst vereinfacht ignoriert wurde (siehe voriger Nachtrag). Jetzt an
+  den echten Template-Items kalibriert statt nur erfunden: Rüstung
+  bekommt einen festen `+1`-Offset auf die berechnete Stufe
+  (`RARITY_OFFSET_BY_CATEGORY` in item-customization.js). Das trifft
+  NICHT nur den Bonus-Fall (Armor+1/+2/+3 = rare/veryRare/legendary vs.
+  Weapon+1/+2/+3 = uncommon/rare/veryRare, beides live gegen die
+  2024-Template-Items bestätigt), sondern auch den bonuslosen
+  Resistenz-Fall: die echte "Armor of Resistance"-Familie (kein
+  Zahlenbonus, nur Resistenz) hat Rarity "rare" — genau das, was die
+  Formel mit 1 Schritt (Extra) + 1 (Rüstungs-Offset) = Index 2 = "rare"
+  vorhersagt. Zwei unabhängig gegen echte Buchdaten bestätigte
+  Datenpunkte, nicht nur einer. 12 Hand-Assertions (u.a. alle drei
+  Waffen- UND alle drei Rüstungs-Bonusstufen einzeln gegen die
+  Template-Items, der bonuslose Resistenz-Fall, kombinierter Fall,
+  Downgrade-Schutz, Artifact-Deckelung). Live verifiziert: "Studded
+  Leather Armor +1" (Basis-Rarity bereits "rare", passend zum
+  Buch-Wert) → Bonus-Dropdown auf "None" belassen, nur Fire-Resistance
+  aktiviert (effektiver Bonus 1 + 1 Extra + 1 Rüstungs-Offset = 3
+  Stufen) → korrekt "veryRare".

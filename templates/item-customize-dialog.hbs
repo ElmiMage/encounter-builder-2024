@@ -1,0 +1,87 @@
+<div class="item-customize-dialog">
+  <p>
+    <strong>{{itemName}}</strong>
+  </p>
+
+  <label class="item-customize-row">
+    Custom Name
+    <input type="text" name="customName" placeholder="{{itemName}}" value="{{customName}}" />
+  </label>
+
+  {{#if showBonusField}}
+    <label class="item-customize-row">
+      Magic Bonus
+      <select name="magicalBonus">
+        {{#each bonusOptions}}
+          <option value="{{this.value}}" {{#if (eq this.value ../magicalBonus)}}selected{{/if}} {{#if this.disabled}}disabled{{/if}}>{{#if this.value}}+{{this.value}}{{else}}None{{/if}}</option>
+        {{/each}}
+      </select>
+    </label>
+    {{#if existingBonus}}
+      <p class="item-customize-hint">This item already has a +{{existingBonus}} bonus — only a higher bonus (or "None", which leaves it as-is) can be picked here.</p>
+    {{/if}}
+  {{else}}
+    <p class="item-customize-hint">Magic Bonus only applies to weapons and armor.</p>
+  {{/if}}
+
+  {{#if isWeapon}}
+    <label class="item-customize-row item-customize-checkbox">
+      <input type="checkbox" name="extraDamageEnabled" {{#if extraDamageEnabled}}checked{{/if}} />
+      Extra Damage Type
+    </label>
+    {{#if extraDamageEnabled}}
+      <div class="item-customize-extra-damage">
+        <input type="number" name="extraDamageNumber" min="1" value="{{extraDamageNumber}}" />
+        <span>d</span>
+        <select name="extraDamageDenomination">
+          {{#each denominationOptions}}
+            <option value="{{this}}" {{#if (eq this ../extraDamageDenomination)}}selected{{/if}}>{{this}}</option>
+          {{/each}}
+        </select>
+        <select name="extraDamageType">
+          {{#each damageTypeOptions}}
+            <option value="{{this}}" {{#if (eq this ../extraDamageType)}}selected{{/if}}>{{humanize this}}</option>
+          {{/each}}
+        </select>
+        <span>damage, on top of the weapon's own</span>
+      </div>
+    {{/if}}
+  {{/if}}
+
+  {{#if isArmor}}
+    <label class="item-customize-row item-customize-checkbox">
+      <input type="checkbox" name="extraResistanceEnabled" {{#if extraResistanceEnabled}}checked{{/if}} />
+      Extra Resistance Type
+    </label>
+    {{#if extraResistanceEnabled}}
+      <div class="item-customize-extra-damage">
+        <span>Resistance to</span>
+        <select name="extraResistanceType">
+          {{#each resistanceTypeOptions}}
+            <option value="{{this}}" {{#if (eq this ../extraResistanceType)}}selected{{/if}}>{{humanize this}}</option>
+          {{/each}}
+        </select>
+        <span>damage</span>
+      </div>
+    {{/if}}
+  {{/if}}
+
+  {{#unless isWeapon}}
+    {{#unless isArmor}}
+      {{#if sourceItemUnknown}}
+        <p class="item-customize-hint">Could not load the source item to check its type — extra damage/resistance type isn't available.</p>
+      {{else}}
+        <p class="item-customize-hint">Extra damage type only applies to weapons; extra resistance type only to armor.</p>
+      {{/if}}
+    {{/unless}}
+  {{/unless}}
+
+  <p class="item-customize-hint">
+    Homebrew, not an official DMG item — a flat house-ruled magic bonus and/or bonus damage/resistance type layered onto this specific find. If more than one copy is in the plan, only one copy becomes this customized item; the rest stay as-is.
+  </p>
+
+  <div class="item-customize-buttons">
+    <button type="button" data-action="apply">Apply</button>
+    <button type="button" data-action="cancel">Cancel</button>
+  </div>
+</div>
