@@ -4,7 +4,7 @@ import { groupPacksBySource } from "./pack-grouping.js";
 import { computeSpiralPositions, clampToSceneBounds } from "./token-placement.js";
 import { autoFillEncounter, autoFillBossEncounter } from "./auto-fill.js";
 import { pickCanvasPoint } from "./canvas-picker.js";
-import { createLootActor, suggestLootPlan, suggestSmoothedLootPlan, rerollMagicItems, listItemCompendiums, loadItemIndex, getAvailableRarities, RARITY_TIERS } from "./loot-generator.js";
+import { createLootActor, suggestLootPlan, suggestSmoothedLootPlan, rerollMagicItems, rerollSingleItem, listItemCompendiums, loadItemIndex, getAvailableRarities, RARITY_TIERS } from "./loot-generator.js";
 import { getAvailableCategories } from "./item-categories.js";
 import { rollIndividualTreasureForEncounter } from "./individual-treasure-tables.js";
 import { humanizeToken, formatCR } from "./format.js";
@@ -59,6 +59,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       deleteLootItem: EncounterBuilderApp.#onDeleteLootItem,
       viewLootItem: EncounterBuilderApp.#onViewLootItem,
       customizeLootItem: EncounterBuilderApp.#onCustomizeLootItem,
+      rerollItem: EncounterBuilderApp.#onRerollItem,
     },
   };
 
@@ -1663,5 +1664,14 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     const entry = container.items.find((i) => (i.key ?? i.uuid) === key);
     if (!entry) return;
     new ItemCustomizeDialog(entry, container, this).render({ force: true });
+  }
+
+  /** Re-rolls a single Treasure Hoard item entry in place (same rarity, fresh pick) — a targeted alternative to "Reroll Magic Items", which replaces every rolled entry at once. Individual Treasure has no rolled magic items (coins only), so this action only ever fires from the Hoard tab's item list. */
+  static async #onRerollItem(event, target) {
+    const container = this.#getActiveLootItemsContainer();
+    if (!container) return;
+    this.#captureScroll(".loot-plan-column");
+    container.items = await rerollSingleItem(container, target.dataset.key, this.#getEnabledLootCollections());
+    this.render();
   }
 }

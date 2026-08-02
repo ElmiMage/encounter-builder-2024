@@ -114,7 +114,7 @@ export function getAvailableRarities(itemIndex) {
 }
 
 /** Finds every physical item of a given rarity across the given (or all) Item compendiums (name/img/uuid only, for random picking). */
-async function getCandidatesForRarity(rarity, collectionIds = null) {
+export async function getCandidatesForRarity(rarity, collectionIds = null) {
   const candidates = [];
   for (const pack of getItemPacks(collectionIds)) {
     let index;
@@ -247,6 +247,44 @@ export async function rerollMagicItems(plan, collectionIds = null) {
   const rolled = await resolveMagicItems(plan.rarityCounts, collectionIds);
   const manual = plan.items.filter((i) => i.source === "manual");
   return [...rolled, ...manual];
+}
+
+/**
+ * Re-rolls exactly ONE previously-rolled magic item entry, identified by
+ * its stable `key`, replacing it with a fresh random pick of the SAME
+ * rarity. Leaves every other entry (rolled or manual) untouched. No-op
+ * (returns plan.items unchanged) if the entry isn't found or isn't
+ * source:"rolled" — manual entries aren't rerollable, same restriction
+ * as the bulk reroll above.
+ */
+export async function rerollSingleItem(plan, key, collectionIds = null) {
+  const entry = plan.items.find((i) => i.key === key);
+  if (!entry || entry.source !== "rolled") return plan.items;
+
+  const candidates = await getCandidatesForRarity(entry.rarity, collectionIds);
+  if (candidates.length === 0) {
+    ui.notifications.warn(`No items found for rarity: ${entry.rarity} — none loaded in your active compendiums.`);
+    return plan.items;
+  }
+
+  // Prefer a different item than the current one if the pool allows it,
+  // so clicking reroll doesn't have a decent chance of visibly doing
+  // nothing.
+  const pool = candidates.length > 1 ? candidates.filter((c) => c.uuid !== entry.uuid) : candidates;
+  const pick = pool[Math.floor(Math.random() * pool.length)];
+
+  entry.uuid = pick.uuid;
+  entry.name = pick.name;
+  entry.img = pick.img;
+  entry.category = pick.category;
+  // Any prior customization (custom name, magic bonus, extra damage/
+  // resistance type) was tailored to the OLD base item — e.g. its name
+  // suggestion or which fields even applied (Weapon vs. Armor) — so it's
+  // cleared rather than silently carried over onto an unrelated item.
+  delete entry.customization;
+  // key, rarity, count, source are left as-is.
+
+  return plan.items;
 }
 
 /**

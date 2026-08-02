@@ -684,3 +684,37 @@
   Buch-Wert) → Bonus-Dropdown auf "None" belassen, nur Fire-Resistance
   aktiviert (effektiver Bonus 1 + 1 Extra + 1 Rüstungs-Offset = 3
   Stufen) → korrekt "veryRare".
+- Einzelnen Hoard-Loot-Slot neu würfeln (seit 2026-08, auf Nutzerwunsch):
+  bisher gab es nur `rerollMagicItems(plan, collectionIds)` (bulk — ersetzt
+  ALLE `source:"rolled"`-Einträge auf einmal). Neue, gezielte
+  `rerollSingleItem(plan, key, collectionIds)` in `loot-generator.js`
+  ersetzt genau EINEN Eintrag (per stabilem `key` identifiziert) durch
+  einen frischen Zufallstreffer derselben Rarity, alle anderen Einträge
+  (gerollt oder manuell) bleiben unangetastet. No-op, wenn der Eintrag
+  nicht gefunden wird oder `source !== "rolled"` ist — manuelle Einträge
+  sind wie beim Bulk-Reroll nicht rerollbar. Nutzt intern dieselbe
+  `getCandidatesForRarity()`-Hilfsfunktion wie `resolveMagicItems()`,
+  jetzt `export`iert statt modul-privat. Bevorzugt (wenn der Pool >1
+  Kandidat hat) bewusst ein ANDERES Item als das aktuelle, damit ein
+  Reroll-Klick nicht mit spürbarer Wahrscheinlichkeit sichtbar wirkungslos
+  bleibt. Ein Detail, das über die reine Nutzervorgabe hinausgeht und beim
+  Umsetzen selbst aufgefallen ist: eine evtl. vorhandene `customization`
+  (Custom-Name/Magic-Bonus/Extra-Schaden- oder -Resistenztyp vom
+  Item-Customize-Feature) auf dem gerollten Eintrag wird beim Reroll
+  gelöscht, statt unverändert auf das neue Item übertragen zu werden —
+  sie war auf das ALTE Basisitem zugeschnitten (Namensvorschlag, welche
+  Felder je nach Waffe/Rüstung überhaupt gültig sind) und würde sonst
+  inkonsistente Zustände erzeugen (z.B. eine Rüstungs-Resistenz-
+  Customization, die nach dem Reroll plötzlich an einer Waffe hängt).
+  UI: neuer 🎲-Button in der Item-Zeile, nur im Treasure-Hoard-Tab (nicht
+  Individual Treasure, da dort nie Magic Items gerollt werden, nur Coins)
+  und nur bei `source === "rolled"` sichtbar — analog zum bedingten
+  Customize-Button. Handler `#onRerollItem` in encounter-builder-app.js
+  folgt exakt dem Muster von `#onCustomizeLootItem`/`#onRemoveLootItem`
+  (`#getActiveLootItemsContainer()` + `#captureScroll()` +
+  `data-key`-Targeting). Foundry-abhängiger Code (nutzt
+  `pack.getIndex`/`ui.notifications` über `getCandidatesForRarity`) —
+  zunächst nur mit `node --check` syntaktisch geprüft plus Handlebars-
+  Balance-Check auf dem Template (95/95 offene/schließende
+  `{{#if}}`/`{{#each}}`), danach vom Nutzer selbst in seiner eigenen
+  laufenden Foundry-Welt getestet und als funktionierend bestätigt.

@@ -397,6 +397,9 @@
               {{#if this.canCustomize}}
                 <button type="button" data-action="customizeLootItem" data-key="{{this.key}}" title="Give this specific copy a custom name, magic bonus, and/or extra damage/resistance type">Customize…</button>
               {{/if}}
+              {{#if (eq this.source "rolled")}}
+                <button type="button" data-action="rerollItem" data-key="{{this.key}}" title="Reroll just this item (same rarity, new pick)">🎲</button>
+              {{/if}}
               <button type="button" data-action="removeLootItem" data-key="{{this.key}}">−</button>
               <button type="button" data-action="addLootItem" data-key="{{this.key}}">+</button>
               <button type="button" class="delete-btn" data-action="deleteLootItem" data-key="{{this.key}}">×</button>

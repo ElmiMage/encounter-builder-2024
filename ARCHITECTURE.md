@@ -114,7 +114,11 @@ Drei getrennte, reine Tabellen-Module plus eine Foundry-Klebeschicht:
   Zahlen aus den drei Tabellen-Modulen in **echte Items** aus den
   GM-Kompendien auf (`resolveMagicItems`), erstellt am Ende einen echten,
   aber unsichtbaren Actor + Token (`createLootActor`) — bewusst **nie**
-  als Combatant hinzugefügt, da Loot nicht kämpft.
+  als Combatant hinzugefügt, da Loot nicht kämpft. Reroll gibt es auf
+  zwei Ebenen: `rerollMagicItems` ersetzt alle gerollten Hoard-Items auf
+  einmal, `rerollSingleItem` (per stabilem `key`) ersetzt gezielt genau
+  eines und wirft dabei eine evtl. vorhandene Item-Customize-Anpassung
+  weg, da die auf das alte Item zugeschnitten war.
 
 ## 6. Party-Actor-Sync
 
