@@ -38,7 +38,7 @@
   {{#if isWeapon}}
     <label class="item-customize-row item-customize-checkbox">
       <input type="checkbox" name="extraDamageEnabled" {{#if extraDamageEnabled}}checked{{/if}} />
-      Extra Damage Type
+      Extra Damage Type 1
     </label>
     {{#if extraDamageEnabled}}
       <div class="item-customize-extra-damage">
@@ -59,12 +59,35 @@
         <span>damage, on top of the weapon's own</span>
       </div>
     {{/if}}
+    <label class="item-customize-row item-customize-checkbox">
+      <input type="checkbox" name="extraDamage2Enabled" {{#if extraDamage2Enabled}}checked{{/if}} />
+      Extra Damage Type 2
+    </label>
+    {{#if extraDamage2Enabled}}
+      <div class="item-customize-extra-damage">
+        <span class="dice-group">
+          <input type="number" name="extraDamage2Number" min="1" value="{{extraDamage2Number}}" />
+          <span>d</span>
+          <select name="extraDamage2Denomination">
+            {{#each denominationOptions}}
+              <option value="{{this}}" {{#if (eq this ../extraDamage2Denomination)}}selected{{/if}}>{{this}}</option>
+            {{/each}}
+          </select>
+        </span>
+        <select name="extraDamage2Type">
+          {{#each damageTypeOptions}}
+            <option value="{{this}}" {{#if (eq this ../extraDamage2Type)}}selected{{/if}}>{{humanize this}}</option>
+          {{/each}}
+        </select>
+        <span>damage, on top of the weapon's own</span>
+      </div>
+    {{/if}}
   {{/if}}
 
   {{#if isArmor}}
     <label class="item-customize-row item-customize-checkbox">
       <input type="checkbox" name="extraResistanceEnabled" {{#if extraResistanceEnabled}}checked{{/if}} />
-      Extra Resistance Type
+      Extra Resistance Type 1
     </label>
     {{#if extraResistanceEnabled}}
       <div class="item-customize-extra-damage">
@@ -72,6 +95,21 @@
         <select name="extraResistanceType">
           {{#each resistanceTypeOptions}}
             <option value="{{this}}" {{#if (eq this ../extraResistanceType)}}selected{{/if}}>{{humanize this}}</option>
+          {{/each}}
+        </select>
+        <span>damage</span>
+      </div>
+    {{/if}}
+    <label class="item-customize-row item-customize-checkbox">
+      <input type="checkbox" name="extraResistance2Enabled" {{#if extraResistance2Enabled}}checked{{/if}} />
+      Extra Resistance Type 2
+    </label>
+    {{#if extraResistance2Enabled}}
+      <div class="item-customize-extra-damage">
+        <span>Resistance to</span>
+        <select name="extraResistance2Type">
+          {{#each resistanceTypeOptions}}
+            <option value="{{this}}" {{#if (eq this ../extraResistance2Type)}}selected{{/if}}>{{humanize this}}</option>
           {{/each}}
         </select>
         <span>damage</span>
@@ -100,7 +138,7 @@
   <p class="item-customize-hint">Auto-suggested from the bonus/extras picked above — pick a different one here to override it.</p>
 
   <p class="item-customize-hint">
-    Homebrew, not an official DMG item — a house-ruled name, description, magic bonus, attunement, and/or bonus damage/resistance type layered onto this specific find. If more than one copy is in the plan, only one copy becomes this customized item; the rest stay as-is.
+    Homebrew, not an official DMG item — a house-ruled name, description, magic bonus, attunement, and/or bonus damage/resistance type(s) layered onto this specific find. If more than one copy is in the plan, only one copy becomes this customized item; the rest stay as-is.
   </p>
 
   <div class="item-customize-buttons">

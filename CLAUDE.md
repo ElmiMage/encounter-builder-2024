@@ -859,3 +859,42 @@
   danach wieder gelöscht (samt Token), andere/ältere Leichen im
   "Encounter Builder Loot"-Ordner aus früheren Sessions bewusst
   unangetastet gelassen.
+- Item-Customize: zweiter Extra-Damage-/Extra-Resistance-Slot (seit
+  2026-08, auf Nutzerwunsch — "ein Slot reicht nicht"). Bewusst auf genau
+  zwei gedeckelt (`EXTRA_SLOT_COUNT` in item-customization.js, reine
+  Dokumentations-Konstante), kein offenes "Add another"-UI — das bleibt
+  Homebrew-Flavor-Customization, kein Build-your-own-Magic-Item-Generator.
+  Datenmodell: `customization.extraDamages`/`customization.extraResistances`
+  sind jetzt Arrays (0-2 Einträge) statt der alten Einzelwerte
+  `extraDamage`/`extraResistance` — `applyItemCustomization()` liest die
+  neuen Plural-Felder, fällt aber auf die alten Singular-Felder zurück,
+  falls nur die vorhanden sind (gleiches Fallback-Read-Muster wie bei den
+  umbenannten Preset-Feldern). Im Dialog selbst (`item-customize-dialog.js`)
+  bewusst NICHT auf ein Array im State umgestellt — zwei separate, flache
+  Feld-Sets (`extraDamageEnabled/Type/...` und `extraDamage2Enabled/
+  Type/...`, analog für Resistance) statt einer Schleife über ein Array,
+  da das die bestehenden Event-Listener/Template-Muster unverändert
+  doppelt statt neu zu bauen — bei fest zwei Slots einfacher als eine
+  generische Lösung. `#onApply()` baut daraus die Plural-Arrays für den
+  gespeicherten Customization-State.
+  `suggestItemName()` verbindet mehrere Typen mit "and" ("Acid and Fire
+  Longsword +2", "...of Fire and Cold") — reine Erweiterung des
+  Ein-Typ-Falls (ein Array mit 1 Element ergibt beim Join keinen
+  "and"-Zusatz, also keine Verhaltensänderung für den bisherigen
+  Standardfall). `suggestRarity()` zählt jetzt `extraDamageCount`/
+  `extraResistanceCount` statt Booleans — zwei Extras kosten zwei
+  Rarity-Stufen, direkte wörtliche Fortsetzung der bestehenden Regel
+  "jedes Extra zählt auch als +1" (keine neue, separate Regel). 15
+  Hand-Assertions gegen `node` (Namens-Join, Rarity-Stufenzählung,
+  Zwei-Slot-Materialisierung, plus Rückwärtskompatibilität mit den alten
+  Singular-Feldern) — alle grün, kein RNG beteiligt. Live end-to-end
+  verifiziert: "Glaive +1" mit Extra Damage Type 1 (Acid) UND 2 (Fire)
+  → Name "Acid and Fire Glaive +1", Rarity automatisch "Very Rare"; nach
+  "Place Loot" hat das echte Item in `activity.damage.parts` alle drei
+  Einträge (Basis 1d10 slashing + 1d6 acid + 1d6 fire). "Studded Leather
+  Armor +3" mit Extra Resistance Type 1 (Fire) UND 2 (Cold) → Name
+  "Studded Leather Armor of Fire and Cold +3", Rarity "Artifact"
+  (Rüstungs-Offset + 3 Bonus + 2 Extras = Deckel erreicht); nach "Place
+  Loot" zwei getrennte Active Effects ("Fire Resistance"/"Cold
+  Resistance"), je mit korrektem `system.traits.dr.value`-Wert. Beide
+  Test-Actors danach wieder gelöscht.

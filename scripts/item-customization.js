@@ -1,11 +1,12 @@
 /**
- * Applies a GM-chosen customization (custom name, flat magic bonus, extra
- * damage type on weapons, extra resistance type on armor) onto a plain item
- * data object — the same shape `Item#toObject()` produces, which is what
- * createLootActor() already works with (see loot-generator.js). Deliberately
- * homebrew, no DMG table backing it (unlike Boss-ify's tiers) — this is
- * "reflavor a mundane item as this encounter's magic find", not a RAW magic
- * item generator.
+ * Applies a GM-chosen customization (custom name, flat magic bonus, up to
+ * two extra damage types on weapons, up to two extra resistance types on
+ * armor — see EXTRA_SLOT_COUNT) onto a plain item data object — the same
+ * shape `Item#toObject()` produces, which is what createLootActor()
+ * already works with (see loot-generator.js). Deliberately homebrew, no
+ * DMG table backing it (unlike Boss-ify's tiers) — this is "reflavor a
+ * mundane item as this encounter's magic find", not a RAW magic item
+ * generator.
  *
  * Mechanically piggybacks on real dnd5e fields rather than inventing
  * anything, all verified live against the installed dnd5e system (see
@@ -19,15 +20,19 @@
  *   which target that nested path specifically. Using the wrong one is a
  *   silent no-op (the AC calc only reads the armor-nested field), which is
  *   exactly the bug this categorization fixes.
- * - Extra weapon damage type: a new entry in the weapon's attack Activity's
- *   `damage.parts` (verified shape: `system.activities` is a plain object
- *   keyed by activity id once `.toObject()`'d, matching how
- *   monster-scaling.js already addresses it).
- * - Extra armor resistance type: a new Active Effect with
- *   `transfer: true` and a `system.traits.dr.value` ADD change — verified
- *   against real resistance-granting items (Ring of Fire Resistance, the
- *   2024 "Armor of Resistance" family), which grant resistance exactly
- *   this way rather than through any item-level "resistance" field.
+ * - Extra weapon damage type(s): one new entry per selected type in the
+ *   weapon's attack Activity's `damage.parts` (verified shape:
+ *   `system.activities` is a plain object keyed by activity id once
+ *   `.toObject()`'d, matching how monster-scaling.js already addresses
+ *   it).
+ * - Extra armor resistance type(s): one new Active Effect per selected
+ *   type, each with `transfer: true` and a `system.traits.dr.value` ADD
+ *   change — verified against real resistance-granting items (Ring of
+ *   Fire Resistance, the 2024 "Armor of Resistance" family), which grant
+ *   resistance exactly this way rather than through any item-level
+ *   "resistance" field. Kept as separate effects (one per type) rather
+ *   than one effect with multiple changes, so each can be individually
+ *   toggled/removed in Foundry's own effects UI later.
  * - Attunement: `system.attunement` is a plain string field, NOT a
  *   boolean — verified against the live installed dnd5e system (a real
  *   2024 "Ring of Protection" reads `"required"`; the 2024 "Weapon, +1,
@@ -72,6 +77,11 @@ export const EXTRA_RESISTANCE_TYPES = [...EXTRA_DAMAGE_TYPES, "bludgeoning", "pi
 
 export const DAMAGE_DENOMINATIONS = [4, 6, 8, 10, 12];
 
+// Deliberately capped at two rather than an open-ended "add another" list
+// (on user request — one slot wasn't enough, but this is homebrew flavor
+// customization, not a build-your-own-magic-item generator).
+export const EXTRA_SLOT_COUNT = 2;
+
 function capitalize(word) {
   return word.charAt(0).toUpperCase() + word.slice(1);
 }
@@ -79,11 +89,13 @@ function capitalize(word) {
 /**
  * Suggests a display name from the base item's name plus whichever
  * customizations are currently selected — e.g. "Longsword" + bonus 2 +
- * extraDamageType "acid" → "Acid Longsword +2"; "Studded Leather Armor" +
- * bonus 1 + extraResistanceType "fire" → "Studded Leather Armor of Fire
- * +1". Bonus always goes last regardless of category (on user request —
- * originally sat right after the base name for armor, ahead of "of X",
- * which read wrong). Resistance uses a bare "of X" — no trailing
+ * extraDamageTypes ["acid"] → "Acid Longsword +2"; "Studded Leather Armor"
+ * + bonus 1 + extraResistanceTypes ["fire"] → "Studded Leather Armor of
+ * Fire +1". A second entry in either array joins with "and" — ["acid",
+ * "fire"] → "Acid and Fire Longsword +2"; ["fire", "cold"] → "...of Fire
+ * and Cold". Bonus always goes last regardless of category (on user
+ * request — originally sat right after the base name for armor, ahead of
+ * "of X", which read wrong). Resistance uses a bare "of X" — no trailing
  * "Resistance" word (on user request; the type alone reads as intended,
  * "Armor of Fire" not "Armor of Fire Resistance"). Strips any existing
  * "+N" suffix from the base name first, so re-suggesting after picking a
@@ -92,13 +104,13 @@ function capitalize(word) {
  * so callers can fall back to leaving the name field untouched/empty.
  *
  * @param {string} baseName
- * @param {{magicalBonus?:number, extraDamageType?:string|null, extraResistanceType?:string|null}} [options]
+ * @param {{magicalBonus?:number, extraDamageTypes?:string[], extraResistanceTypes?:string[]}} [options]
  */
-export function suggestItemName(baseName, { magicalBonus = 0, extraDamageType = null, extraResistanceType = null } = {}) {
-  if (!magicalBonus && !extraDamageType && !extraResistanceType) return "";
+export function suggestItemName(baseName, { magicalBonus = 0, extraDamageTypes = [], extraResistanceTypes = [] } = {}) {
+  if (!magicalBonus && extraDamageTypes.length === 0 && extraResistanceTypes.length === 0) return "";
   let name = (baseName ?? "").replace(/\s*\+\d+\s*$/, "").trim();
-  if (extraDamageType) name = `${capitalize(extraDamageType)} ${name}`;
-  if (extraResistanceType) name = `${name} of ${capitalize(extraResistanceType)}`;
+  if (extraDamageTypes.length > 0) name = `${extraDamageTypes.map(capitalize).join(" and ")} ${name}`;
+  if (extraResistanceTypes.length > 0) name = `${name} of ${extraResistanceTypes.map(capitalize).join(" and ")}`;
   if (magicalBonus > 0) name = `${name} +${magicalBonus}`;
   return name;
 }
@@ -119,22 +131,25 @@ const RARITY_OFFSET_BY_CATEGORY = { Armor: 1 };
  * es um eine Stufe, jedes Extra zählt auch als +1"), not an official DMG
  * table, but calibrated to land exactly on the real 2024 template items'
  * own rarities (see RARITY_OFFSET_BY_CATEGORY above) rather than being
- * purely invented: each point of magic bonus, PLUS one more for an extra
- * damage type (weapon) or extra resistance type (armor) if either is
- * picked, moves the item up that many steps on RARITY_TIERS starting
- * from "common" — with armor starting one step higher than weapons for
- * the same inputs (on user request — other, later-relevant things
- * distinguish armor rarity from weapon rarity, so the book's own
- * asymmetry here is worth keeping rather than simplifying away). Never
+ * purely invented: each point of magic bonus, PLUS one more for EACH extra
+ * damage type (weapon) or extra resistance type (armor) picked — up to two
+ * of either, see EXTRA_SLOT_COUNT — moves the item up that many steps on
+ * RARITY_TIERS starting from "common" — with armor starting one step
+ * higher than weapons for the same inputs (on user request — other,
+ * later-relevant things distinguish armor rarity from weapon rarity, so
+ * the book's own asymmetry here is worth keeping rather than simplifying
+ * away). Two extras costing two steps (instead of both counting as one
+ * "extras" flag) is a direct, literal reading of "jedes Extra zählt auch
+ * als +1" once a second slot became pickable — not a separate rule. Never
  * downgrades: the higher of the item's current rarity and the computed
  * one wins.
  *
  * @param {string} currentRarity - the item's rarity before this customization (RARITY_TIERS key, or ""/unset for a mundane item)
- * @param {{magicalBonus?:number, extraDamage?:boolean, extraResistance?:boolean, category?:string}} [options]
+ * @param {{magicalBonus?:number, extraDamageCount?:number, extraResistanceCount?:number, category?:string}} [options]
  * @returns {string} a RARITY_TIERS key
  */
-export function suggestRarity(currentRarity, { magicalBonus = 0, extraDamage = false, extraResistance = false, category = null } = {}) {
-  const steps = (Number(magicalBonus) || 0) + (extraDamage ? 1 : 0) + (extraResistance ? 1 : 0);
+export function suggestRarity(currentRarity, { magicalBonus = 0, extraDamageCount = 0, extraResistanceCount = 0, category = null } = {}) {
+  const steps = (Number(magicalBonus) || 0) + (Number(extraDamageCount) || 0) + (Number(extraResistanceCount) || 0);
   if (steps <= 0) return currentRarity;
   const offset = RARITY_OFFSET_BY_CATEGORY[category] ?? 0;
   const currentIndex = Math.max(0, RARITY_TIERS.indexOf(currentRarity));
@@ -144,7 +159,7 @@ export function suggestRarity(currentRarity, { magicalBonus = 0, extraDamage = f
 
 /**
  * @param {object} itemData - plain item data (e.g. from Item#toObject())
- * @param {{name?:string, customization:{magicalBonus?:number, extraDamage?:{number:number, denomination:number, type:string}|null, extraResistance?:string|null, requiresAttunement?:boolean, description?:string|null, rarity?:string}}} planItem
+ * @param {{name?:string, customization:{magicalBonus?:number, extraDamages?:{number:number, denomination:number, type:string}[], extraResistances?:string[], requiresAttunement?:boolean, description?:string|null, rarity?:string}}} planItem
  * @returns {object} a new, modified item data object — itemData itself is untouched
  */
 export function applyItemCustomization(itemData, planItem) {
@@ -162,8 +177,12 @@ export function applyItemCustomization(itemData, planItem) {
 
   const category = categorizeItem(data.type, data.system?.type?.value);
   const bonus = Number(customization.magicalBonus) || 0;
-  const extraDamage = customization.extraDamage;
-  const extraResistance = customization.extraResistance;
+  // Read the new plural arrays, falling back to the old single-value
+  // fields (extraDamage/extraResistance) for customizations saved before
+  // the second slot existed — same fallback-read pattern this project
+  // already uses for renamed preset fields (see encounter-builder-app.js).
+  const extraDamages = customization.extraDamages ?? (customization.extraDamage ? [customization.extraDamage] : []);
+  const extraResistances = customization.extraResistances ?? (customization.extraResistance ? [customization.extraResistance] : []);
 
   if (bonus > 0) {
     if (category === "Armor") {
@@ -178,7 +197,8 @@ export function applyItemCustomization(itemData, planItem) {
     data.system.attunement = "required";
   }
 
-  if (extraDamage && extraDamage.number > 0 && extraDamage.denomination && extraDamage.type) {
+  for (const extraDamage of extraDamages) {
+    if (!(extraDamage.number > 0 && extraDamage.denomination && extraDamage.type)) continue;
     const activities = data.system.activities ?? {};
     for (const activity of Object.values(activities)) {
       if (activity.type !== "attack") continue;
@@ -195,7 +215,7 @@ export function applyItemCustomization(itemData, planItem) {
     }
   }
 
-  if (extraResistance) {
+  for (const extraResistance of extraResistances) {
     data.effects ??= [];
     data.effects.push({
       name: `${capitalize(extraResistance)} Resistance`,
@@ -204,7 +224,7 @@ export function applyItemCustomization(itemData, planItem) {
     });
   }
 
-  if (bonus > 0 || extraDamage || extraResistance || customization.requiresAttunement) {
+  if (bonus > 0 || extraDamages.length > 0 || extraResistances.length > 0 || customization.requiresAttunement) {
     const properties = new Set(data.system.properties ?? []);
     properties.add("mgc");
     data.system.properties = [...properties];

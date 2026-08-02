@@ -3,9 +3,9 @@
  * item into this encounter's specific magic find: a custom name and/or
  * description, a flat magic bonus (system.magicalBonus /
  * system.armor.magicalBonus, same fields the 2024 template magic items
- * use), an extra damage type on top of a weapon's own damage, an extra
- * resistance type for armor, an attunement requirement, and an
- * auto-suggested-but-overridable rarity. Homebrew, not a DMG table
+ * use), up to two extra damage types on top of a weapon's own damage (or
+ * up to two extra resistance types for armor), an attunement requirement,
+ * and an auto-suggested-but-overridable rarity. Homebrew, not a DMG table
  * lookup — see item-customization.js.
  *
  * Loads the real compendium Item once (fromUuid) so the dialog knows
@@ -13,8 +13,18 @@
  * item-categories.js already uses for the loot browser's type filter) —
  * only those two categories get the Magic Bonus field at all (other item
  * types don't mechanically use it — see item-customization.js), and only
- * one of Extra Damage Type (weapon) / Extra Resistance Type (armor) makes
- * sense per item. Mirrors BossifyDialog's lazy source-load pattern.
+ * Extra Damage Type (weapon) OR Extra Resistance Type (armor) is offered
+ * per item, never both. Mirrors BossifyDialog's lazy source-load pattern.
+ *
+ * The two extra-damage/-resistance slots are separate flat fields
+ * (extraDamageEnabled/Type/... and extraDamage2Enabled/Type/...) rather
+ * than an array in dialog state — capped at exactly two on user request,
+ * so duplicating the existing single-slot fields once was simpler than
+ * generalizing to an array the template/listeners would also need to
+ * loop over. item-customization.js's applyItemCustomization() and the
+ * saved plan-entry customization object DO use plural arrays
+ * (extraDamages[]/extraResistances[]) — #onApply() assembles those from
+ * the flat per-slot fields.
  *
  * Only writes the chosen customization back onto the loot-plan entry
  * (and, if the entry currently represents more than one copy, splits one
@@ -61,12 +71,29 @@ export class ItemCustomizeDialog extends HandlebarsApplicationMixin(ApplicationV
     this.customDescription = existing?.description ?? "";
     this.requiresAttunement = !!existing?.requiresAttunement;
     this.magicalBonus = existing?.magicalBonus ?? 0;
-    this.extraDamageEnabled = !!existing?.extraDamage;
-    this.extraDamageNumber = existing?.extraDamage?.number ?? 1;
-    this.extraDamageDenomination = existing?.extraDamage?.denomination ?? 6;
-    this.extraDamageType = existing?.extraDamage?.type ?? "acid";
-    this.extraResistanceEnabled = !!existing?.extraResistance;
-    this.extraResistanceType = existing?.extraResistance ?? "fire";
+
+    // Two independent extra-damage slots (capped — see EXTRA_SLOT_COUNT
+    // in item-customization.js) rather than an open-ended list, on user
+    // request. Reads the new plural existing.extraDamages[] when present;
+    // falls back to the old singular existing.extraDamage for slot 1 only
+    // (customizations saved before the second slot existed never had a
+    // second one to restore).
+    const extraDamages = existing?.extraDamages ?? (existing?.extraDamage ? [existing.extraDamage] : []);
+    this.extraDamageEnabled = !!extraDamages[0];
+    this.extraDamageNumber = extraDamages[0]?.number ?? 1;
+    this.extraDamageDenomination = extraDamages[0]?.denomination ?? 6;
+    this.extraDamageType = extraDamages[0]?.type ?? "acid";
+    this.extraDamage2Enabled = !!extraDamages[1];
+    this.extraDamage2Number = extraDamages[1]?.number ?? 1;
+    this.extraDamage2Denomination = extraDamages[1]?.denomination ?? 6;
+    this.extraDamage2Type = extraDamages[1]?.type ?? "fire";
+
+    // Same two-slot/fallback-read pattern as extraDamages above.
+    const extraResistances = existing?.extraResistances ?? (existing?.extraResistance ? [existing.extraResistance] : []);
+    this.extraResistanceEnabled = !!extraResistances[0];
+    this.extraResistanceType = extraResistances[0] ?? "fire";
+    this.extraResistance2Enabled = !!extraResistances[1];
+    this.extraResistance2Type = extraResistances[1] ?? "cold";
     // Rarity dropdown: null = keep following the live auto-suggestion
     // (see #autoRarity), same "auto until touched" idea as the name
     // field above, but tracked as an explicit gate flag rather than
@@ -136,12 +163,28 @@ export class ItemCustomizeDialog extends HandlebarsApplicationMixin(ApplicationV
     return this.magicalBonus > 0 ? this.magicalBonus : this.#existingBonus(this.#category());
   }
 
+  /** {number, denomination, type} for each currently-enabled extra-damage slot, in slot order — 0-2 entries. */
+  #activeExtraDamages() {
+    const damages = [];
+    if (this.extraDamageEnabled) damages.push({ number: this.extraDamageNumber, denomination: this.extraDamageDenomination, type: this.extraDamageType });
+    if (this.extraDamage2Enabled) damages.push({ number: this.extraDamage2Number, denomination: this.extraDamage2Denomination, type: this.extraDamage2Type });
+    return damages;
+  }
+
+  /** The resistance type string for each currently-enabled extra-resistance slot, in slot order — 0-2 entries. */
+  #activeExtraResistances() {
+    const resistances = [];
+    if (this.extraResistanceEnabled) resistances.push(this.extraResistanceType);
+    if (this.extraResistance2Enabled) resistances.push(this.extraResistance2Type);
+    return resistances;
+  }
+
   /** The rarity suggestRarity() would compute from the currently-selected bonus/extras — recomputed fresh on every render rather than cached, since (unlike the free-text name field) a <select>'s displayed value has no "in-progress typing" to protect, so there's no need to mirror #applyNameSuggestion()'s imperative mutate-on-change style here. */
   #autoRarity() {
     return suggestRarity(this.entry.rarity, {
       magicalBonus: this.#effectiveBonus(),
-      extraDamage: this.extraDamageEnabled,
-      extraResistance: this.extraResistanceEnabled,
+      extraDamageCount: this.#activeExtraDamages().length,
+      extraResistanceCount: this.#activeExtraResistances().length,
       category: this.#category(),
     });
   }
@@ -161,8 +204,8 @@ export class ItemCustomizeDialog extends HandlebarsApplicationMixin(ApplicationV
     if (this.customNameTouched || !this.#sourceItem) return;
     const suggested = suggestItemName(this.#sourceItem.name, {
       magicalBonus: this.#effectiveBonus(),
-      extraDamageType: this.extraDamageEnabled ? this.extraDamageType : null,
-      extraResistanceType: this.extraResistanceEnabled ? this.extraResistanceType : null,
+      extraDamageTypes: this.#activeExtraDamages().map((d) => d.type),
+      extraResistanceTypes: this.#activeExtraResistances(),
     });
     if (suggested) this.customName = suggested;
   }
@@ -214,10 +257,16 @@ export class ItemCustomizeDialog extends HandlebarsApplicationMixin(ApplicationV
       extraDamageNumber: this.extraDamageNumber,
       extraDamageDenomination: this.extraDamageDenomination,
       extraDamageType: this.extraDamageType,
+      extraDamage2Enabled: this.extraDamage2Enabled,
+      extraDamage2Number: this.extraDamage2Number,
+      extraDamage2Denomination: this.extraDamage2Denomination,
+      extraDamage2Type: this.extraDamage2Type,
       damageTypeOptions: EXTRA_DAMAGE_TYPES,
       denominationOptions: DAMAGE_DENOMINATIONS,
       extraResistanceEnabled: this.extraResistanceEnabled,
       extraResistanceType: this.extraResistanceType,
+      extraResistance2Enabled: this.extraResistance2Enabled,
+      extraResistance2Type: this.extraResistance2Type,
       resistanceTypeOptions: EXTRA_RESISTANCE_TYPES,
     };
   }
@@ -252,6 +301,22 @@ export class ItemCustomizeDialog extends HandlebarsApplicationMixin(ApplicationV
       this.#applyNameSuggestion();
       this.render();
     });
+    this.element.querySelector('[name="extraDamage2Enabled"]')?.addEventListener("change", (ev) => {
+      this.extraDamage2Enabled = ev.target.checked;
+      this.#applyNameSuggestion();
+      this.render();
+    });
+    this.element.querySelector('[name="extraDamage2Number"]')?.addEventListener("change", (ev) => {
+      this.extraDamage2Number = Math.max(1, Number(ev.target.value) || 1);
+    });
+    this.element.querySelector('[name="extraDamage2Denomination"]')?.addEventListener("change", (ev) => {
+      this.extraDamage2Denomination = Number(ev.target.value);
+    });
+    this.element.querySelector('[name="extraDamage2Type"]')?.addEventListener("change", (ev) => {
+      this.extraDamage2Type = ev.target.value;
+      this.#applyNameSuggestion();
+      this.render();
+    });
     this.element.querySelector('[name="extraResistanceEnabled"]')?.addEventListener("change", (ev) => {
       this.extraResistanceEnabled = ev.target.checked;
       this.#applyNameSuggestion();
@@ -259,6 +324,16 @@ export class ItemCustomizeDialog extends HandlebarsApplicationMixin(ApplicationV
     });
     this.element.querySelector('[name="extraResistanceType"]')?.addEventListener("change", (ev) => {
       this.extraResistanceType = ev.target.value;
+      this.#applyNameSuggestion();
+      this.render();
+    });
+    this.element.querySelector('[name="extraResistance2Enabled"]')?.addEventListener("change", (ev) => {
+      this.extraResistance2Enabled = ev.target.checked;
+      this.#applyNameSuggestion();
+      this.render();
+    });
+    this.element.querySelector('[name="extraResistance2Type"]')?.addEventListener("change", (ev) => {
+      this.extraResistance2Type = ev.target.value;
       this.#applyNameSuggestion();
       this.render();
     });
@@ -275,23 +350,23 @@ export class ItemCustomizeDialog extends HandlebarsApplicationMixin(ApplicationV
   }
 
   static #onApply(event, target) {
+    const extraDamages = this.#activeExtraDamages();
+    const extraResistances = this.#activeExtraResistances();
     const customization = {
       name: this.customName.trim() || null,
       description: this.customDescription.trim() || null,
       requiresAttunement: this.requiresAttunement,
       magicalBonus: this.magicalBonus > 0 ? this.magicalBonus : 0,
-      extraDamage: this.extraDamageEnabled
-        ? { number: this.extraDamageNumber, denomination: this.extraDamageDenomination, type: this.extraDamageType }
-        : null,
-      extraResistance: this.extraResistanceEnabled ? this.extraResistanceType : null,
+      extraDamages: extraDamages.length > 0 ? extraDamages : null,
+      extraResistances: extraResistances.length > 0 ? extraResistances : null,
     };
     const hasCustomization =
       !!customization.name ||
       !!customization.description ||
       customization.requiresAttunement ||
       customization.magicalBonus > 0 ||
-      !!customization.extraDamage ||
-      !!customization.extraResistance ||
+      !!customization.extraDamages ||
+      !!customization.extraResistances ||
       !!this.rarityOverride;
 
     // Rarity: the GM's manual pick (rarityOverride) wins outright if set;
@@ -304,8 +379,8 @@ export class ItemCustomizeDialog extends HandlebarsApplicationMixin(ApplicationV
         this.rarityOverride ??
         suggestRarity(this.entry.rarity, {
           magicalBonus: this.#effectiveBonus(),
-          extraDamage: !!customization.extraDamage,
-          extraResistance: !!customization.extraResistance,
+          extraDamageCount: extraDamages.length,
+          extraResistanceCount: extraResistances.length,
           category: this.#category(),
         });
     }
