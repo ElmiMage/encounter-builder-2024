@@ -11,7 +11,7 @@ with a fully editable preview before creating anything.
 
 **Encounter tab**
 
-<img width="952" height="770" alt="Encounter Builder" src="https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.5/screenshots/encounter-tab.jpg" />
+<img width="1107" height="865" alt="Encounter Builder" src="https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.6/screenshots/encounter-tab.jpg" />
 
 - XP budget per 2024 DMG rules (Low/Moderate/High, no group multipliers)
 - Browse monsters from ANY loaded Actor compendium (SRD + your own homebrew)
@@ -52,10 +52,15 @@ with a fully editable preview before creating anything.
 - Click-to-place token spiral formation on the canvas
 - Creates a real Combat encounter when you're happy with the picks
 - Compendium selection is remembered per-user across sessions
+- **Encounter Presets**: save the current Party Level/Size/Difficulty, the
+  full monster list (including per-monster Boss-ify/Minion settings), and
+  the current Treasure Hoard plan (if one's been rolled) as a named,
+  world-shared preset — Save As… / Load / Delete, right above the
+  encounter list
 
-**Loot tab — Individual Treasure**
+**Individual Treasure tab**
 
-<img width="952" height="774" alt="Encounter Builder Loot" src="https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.5/screenshots/loot-tab.jpg" />
+<img width="1102" height="864" alt="Encounter Builder Loot" src="https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.6/screenshots/loot-tab.jpg" />
 
 - The 2024 DMG's smaller, separate "Individual Treasure" table: the
   incidental coin a single non-hoarding monster carries, as opposed to a
@@ -65,10 +70,18 @@ with a fully editable preview before creating anything.
   never rolls), fully editable afterward
 - Search + manually add specific items from your own compendiums, on top
   of or instead of the rolled coins
+- Filter the item browser by DMG-style category (Weapon, Armor, Ring, Rod,
+  Wand, Wondrous Item, and more) — also available on the Treasure Hoard tab
+- **Customize…**: turn any weapon or armor entry (rolled or manually
+  added) into a named magic find before it's materialized — custom name,
+  flat magic bonus, an extra damage type (weapons) or resistance type
+  (armor), and an auto-suggested rarity that scales with what you picked.
+  Homebrew, not an official DMG item generator — clearly flagged as such
+  in the dialog
 
 **Treasure Hoard tab**
 
-<img width="952" height="775" alt="Encounter Builder Loot Hoard" src="https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.5/screenshots/treasure-hoard-tab.jpg" />
+<img width="1180" height="923" alt="Encounter Builder Loot Hoard" src="https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.6/screenshots/treasure-hoard-tab.jpg" />
 
 - The 2024 DMG's detailed Treasure Hoard tables — coins, gems/art, and
   resolved magic items with real names, not a blind roll
