@@ -2,7 +2,7 @@
   "id": "encounter-builder-2024",
   "title": "Encounter Builder (2024 Rules)",
   "description": "A modern, actively maintained encounter builder for D&D 5e (2024 rules) in Foundry VTT. Calculates XP budgets using the 2024 Dungeon Master's Guide system (Low/Moderate/High, no group multipliers), lets you pull monsters from any loaded Actor compendium (including your own homebrew), and generates DMG-accurate loot — a per-monster Individual Treasure purse plus a full editable Treasure Hoard, with an optional homebrew smoothed-by-level table alongside the RAW tiers. Save and reload full encounter + loot presets, filter loot by item type (Weapon/Armor/Ring/Rod/Wand/etc.), and turn any mundane weapon or armor into a named magic find — custom name, description, magic bonus, up to two extra damage/resistance types, attunement, and an overridable rarity — before it hits the table.",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "license": "LICENSE",
   "compatibility": {
     "minimum": "12",
@@ -31,22 +31,22 @@
   "media": [
     {
       "type": "screenshot",
-      "url": "https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.8/screenshots/encounter-tab.jpg",
+      "url": "https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.9/screenshots/encounter-tab.jpg",
       "caption": "Encounter tab"
     },
     {
       "type": "screenshot",
-      "url": "https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.8/screenshots/loot-tab.jpg",
+      "url": "https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.9/screenshots/loot-tab.jpg",
       "caption": "Individual Treasure tab"
     },
     {
       "type": "screenshot",
-      "url": "https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.8/screenshots/treasure-hoard-tab.jpg",
+      "url": "https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.9/screenshots/treasure-hoard-tab.jpg",
       "caption": "Treasure Hoard tab"
     },
     {
       "type": "screenshot",
-      "url": "https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.8/screenshots/item-customize-dialog.jpg",
+      "url": "https://cdn.jsdelivr.net/gh/ElmiMage/encounter-builder-2024@v0.3.9/screenshots/item-customize-dialog.jpg",
       "caption": "Item Customize dialog"
     }
   ],
