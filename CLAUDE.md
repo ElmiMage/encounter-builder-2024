@@ -779,3 +779,27 @@
      weiterhin korrekt, keine Regression. Testdaten (das hinzugefügte
      Item) danach wieder entfernt, keine Actors/Tokens erzeugt (nie
      "Place Loot"/"Deploy Encounter" geklickt).
+- Help-Dialog nicht scrollbar (seit 2026-08, Nutzer-Bugreport): der Text
+  im "?"-Hilfe-Dialog (`#onShowHelp`) ist länger als das Fenster hoch
+  wird, ein Teil (u.a. die kompletten "Individual Treasure"/"Treasure
+  Hoard"-Abschnitte sowie der "Close"-Button) war dadurch unerreichbar.
+  Root Cause live gegen die laufende Welt gefunden: `DialogV2.wait()`s
+  `.window-content` hat standardmäßig `overflow: hidden` (kein `auto`) —
+  bestätigt per `getComputedStyle` (`overflowY: "hidden"`,
+  `scrollHeight: 1035` vs. `clientHeight: 739`, exakt der fehlende Rest
+  wurde einfach abgeschnitten statt scrollbar zu sein). Das Fenster
+  selbst war korrekt auf die Viewport-Höhe begrenzt — nur der interne
+  Inhalt konnte nicht scrollen. Fix: `overflow-y: auto` auf
+  `.window-content`, aber NICHT global (würde jeden Foundry-Dialog in
+  der Welt betreffen) — stattdessen scoped über eine per `classes`-Option
+  (Top-Level in der `DialogV2.wait()`-Config, NICHT unter `window:`,
+  live durch Ausprobieren verifiziert — `window: {classes:[...]}` landet
+  nirgends, `classes:[...]` auf oberster Ebene landet korrekt auf dem
+  äußeren `.application`-Element) übergebene eigene Klasse
+  `encounter-builder-2024-help-dialog`. `DialogV2.wait()` erzeugt keine
+  eigene Application-Subklasse mit fester `id` (Foundry vergibt bei
+  jedem Öffnen ein neues `dialog-N`), daher keine ID-basierte Scoping-
+  Möglichkeit wie bei Boss-ify-/Item-Customize-Dialog. Live verifiziert
+  nach Reload (Directory-Junction, F5-Äquivalent): echtes Mausrad-
+  Scrollen im Hilfe-Dialog funktioniert jetzt, alle Abschnitte inkl.
+  "Close"-Button erreichbar, sichtbare Scrollbar am rechten Rand.

@@ -604,6 +604,17 @@
   margin-left: 0.15rem;
 }
 
+/* Help dialog — plain DialogV2.wait(), not a custom Application subclass,
+   so it has no stable id to scope by (Foundry assigns a fresh "dialog-N"
+   each time it opens) — scoped instead by the "encounter-builder-2024-
+   help-dialog" class passed via DialogV2.wait's `classes` option.
+   DialogV2's .window-content defaults to overflow: hidden, which — live-
+   verified — silently clips this dialog's content below the window's
+   auto-fit height with no scrollbar and no other way to reach it. */
+.encounter-builder-2024-help-dialog .window-content {
+  overflow-y: auto;
+}
+
 /* Boss-ify dialog — separate ApplicationV2 window, not nested under
    .encounter-builder-2024, so it gets its own small ruleset here rather
    than relying on the encounter builder's scoped styles above. */

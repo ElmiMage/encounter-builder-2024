@@ -727,6 +727,14 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   static #onShowHelp(event, target) {
     foundry.applications.api.DialogV2.wait({
       window: { title: "Encounter Builder — Help", icon: "fa-solid fa-circle-question" },
+      // DialogV2's .window-content defaults to overflow: hidden — fine for
+      // short dialogs, but this one's content is taller than the window
+      // can grow to on a typical screen, silently clipping everything
+      // past that point with no way to scroll to it. classes (not
+      // window.classes) is what actually lands on the outer .application
+      // element — verified live, since DialogV2's config shape isn't
+      // otherwise documented in this codebase.
+      classes: ["encounter-builder-2024-help-dialog"],
       position: { width: 520 },
       content: `
         <div class="eb-help">
