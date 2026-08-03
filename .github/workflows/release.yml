@@ -26,6 +26,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Pin download URL to this tag
+        # The committed module.json's "download" points at /releases/latest/
+        # as a source-tree placeholder — fine for manifest (which SHOULD
+        # float to whatever's newest), wrong for download. A specific
+        # version's module.json must download that SAME version, or
+        # picking an old version from Foundry's "Add Version" list (or the
+        # package browser's version dropdown) silently installs whatever
+        # is currently latest instead. Rewritten here, in the build
+        # artifact only — never committed back to the repo.
+        run: sed -i "s#releases/latest/download/module.zip#releases/download/${{ github.ref_name }}/module.zip#" module.json
+
       - name: Build module.zip
         run: zip -r module.zip module.json LICENSE README.md scripts styles templates
 

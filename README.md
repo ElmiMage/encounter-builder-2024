@@ -146,15 +146,25 @@ materialized:
 1. Bump `version` in `module.json`, commit
 2. Tag and push: `git tag -a vX.Y.Z -m "..."` then `git push origin master --tags`
 3. A GitHub Actions workflow (`.github/workflows/release.yml`) automatically
-   builds `module.zip` (module.json, LICENSE, README.md, scripts/, styles/,
+   rewrites `download` to point at this specific tag (see below), builds
+   `module.zip` (module.json, LICENSE, README.md, scripts/, styles/,
    templates/ — matches exactly what Foundry needs to run the module) and
    opens it as a **draft** release with the built assets attached
 4. Write the real release notes and publish: `gh release edit vX.Y.Z --notes "..." --draft=false`
    (or finish it in the GitHub web UI)
 
-The manifest/download URLs in `module.json` always point at
-`releases/latest`, so publishing the release is what makes Foundry's
-"Update Module" check pick up the new version.
+`manifest` and `download` serve different purposes and must NOT both
+point at `releases/latest`: `manifest` should float there — it's the URL
+Foundry re-fetches to check for updates, so it always needs to resolve to
+whatever's newest. `download` is different: it lives *inside* one
+specific version's manifest and must point at that SAME version's
+`module.zip`, not "latest" — otherwise picking an older version from
+Foundry's package browser (or an "Add Version" entry on the package admin
+page) silently downloads whatever is currently newest instead of the
+version you asked for. The committed `module.json` keeps `download`
+pointing at `releases/latest` as a source-tree placeholder; the release
+workflow rewrites it to `releases/download/<tag>` in the built artifacts
+only, never committing that change back.
 
 ## Status
 
