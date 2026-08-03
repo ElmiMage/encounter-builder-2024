@@ -2,7 +2,7 @@
   "id": "encounter-builder-2024",
   "title": "Encounter Builder (2024 Rules)",
   "description": "A modern, actively maintained encounter builder for D&D 5e (2024 rules) in Foundry VTT. Calculates XP budgets using the 2024 Dungeon Master's Guide system (Low/Moderate/High, no group multipliers), lets you pull monsters from any loaded Actor compendium (including your own homebrew), and generates DMG-accurate loot — a per-monster Individual Treasure purse plus a full editable Treasure Hoard, with an optional homebrew smoothed-by-level table alongside the RAW tiers. Save and reload full encounter + loot presets, filter loot by item type (Weapon/Armor/Ring/Rod/Wand/etc.), and turn any mundane weapon or armor into a named magic find — custom name, description, magic bonus, up to two extra damage/resistance types, attunement, and an overridable rarity — before it hits the table.",
-  "version": "0.3.9",
+  "version": "0.3.10",
   "license": "LICENSE",
   "compatibility": {
     "minimum": "12",
