@@ -898,3 +898,33 @@
   Loot" zwei getrennte Active Effects ("Fire Resistance"/"Cold
   Resistance"), je mit korrektem `system.traits.dr.value`-Wert. Beide
   Test-Actors danach wieder gelöscht.
+- Foundry V14 Kompatibilität verifiziert (2026-08, auf Nutzerwunsch):
+  Nutzer hat eine portable Foundry-V14.365-Installation aufgesetzt, dnd5e
+  auf 5.3.3 aktualisiert (deklariert selbst `verified: "14"` in seinem
+  eigenen `system.json`) und seine komplette V13-Testwelt (`testwelt`)
+  inkl. Modulen/Welten/Systemen rübergespielt. Die
+  `Data/modules/encounter-builder-2024`-Junction war dabei nur eine leere
+  Kopie statt einer echten Verzeichnis-Junction — neu angelegt (Ziel: das
+  Repo, exakt wie bei der bestehenden V13-Installation). Modul in der
+  Welt aktiviert (`game.settings.set("core","moduleConfiguration",...)`
+  + Reload, da Foundry Modul-Änderungen nicht automatisch neu lädt).
+  Live durchgetestet: App rendert korrekt (alle drei Tabs,
+  Kompendium-Baum, Party-Config), Monster hinzufügen aktualisiert die
+  Budget-Leiste korrekt, Help-Dialog-Scroll-Fix (`.window-content
+  {overflow-y:auto}`) funktioniert unverändert unter V14s DialogV2, und
+  der komplette Item-Customize-Dialog (Attunement, zwei Resistenz-Slots,
+  Freitext-Beschreibung, Rarity-Auto-Suggestion) lief End-to-End exakt
+  wie unter V13 — "Studded Leather Armor +3" → "Studded Leather Armor of
+  Fire and Cold +3", Rarity "Artifact", nach "Place Loot" beim echten
+  Item `attunement:"required"`, `armor.magicalBonus:"3"`, ersetzte
+  Beschreibung, zwei getrennte Resistenz-Effects, `"mgc"`-Flag — alles
+  identisch zum V13-Ergebnis. Einzige Auffälligkeit: das synthetische
+  `canvas.stage.emit("pointerdown", ...)`-Muster für die Canvas-Token-
+  Platzierung (siehe Drag-&-Drop-Eintrag oben) hat in dieser
+  automatisierten Session unter V14 nicht gegriffen (Actor wurde korrekt
+  erzeugt, aber kein Token platziert) — vermutlich dieselbe Kategorie
+  Test-Umgebungs-Einschränkung wie die dort dokumentierten
+  Automatisierungs-Grenzen, kein Hinweis auf ein echtes V14-Problem,
+  da die Actor-/Item-Erzeugung selbst über den kompletten Pfad korrekt
+  lief. `module.json`s `compatibility.verified` auf `"14"` angehoben,
+  README-Status-Zeile mitgezogen. Test-Actor danach wieder gelöscht.

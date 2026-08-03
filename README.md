@@ -159,7 +159,7 @@ The manifest/download URLs in `module.json` always point at
 ## Status
 
 Actively developed. See `module.json` for the compatibility range
-(V12 minimum, tested against V13). Foundry-dependent code (canvas
+(V12 minimum, tested against V13 and V14). Foundry-dependent code (canvas
 placement, Actor/Item creation and mutation, the Boss-ify dialog app)
 can't be unit-tested outside a live Foundry session — everything else (all
 pure-logic `scripts/*.js` files, including the treasure/loot tables, the
