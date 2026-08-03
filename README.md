@@ -32,7 +32,7 @@ with a fully editable preview before creating anything.
   Mortals!*) — fixed low HP and fixed, non-random damage per hit, at a
   fraction of its normal XP cost — for fast, disposable group fights.
   Also reversible
-- **Encounter HP** mode (RAW / Average / Maxroll) controls how every
+- **Encounter HP** mode (RAW / Minroll / Maxroll) controls how every
   monster's HP is set when placed, independent of Boss-ify/Minion
 - Boss-ify's tier percentages/AC/ability bonuses and Minion's XP discount
   are GM-tunable per-user under Settings > Configure Settings > Module

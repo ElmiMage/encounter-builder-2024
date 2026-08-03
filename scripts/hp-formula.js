@@ -27,20 +27,24 @@ export function parseHpFormula(formula) {
 /**
  * Computes an HP max value for a given mode:
  *  - "raw": the creature's stat block as printed — returns `currentMax`
- *    unchanged (RAW = "Rules As Written").
- *  - "average": the standard 5e average-HP formula, count * (die/2 + 0.5)
- *    + bonus, floored — recomputed from the dice formula rather than
- *    trusting `currentMax`, so it corrects any prior drift (e.g. a
- *    previously Boss-ified or re-imported actor).
+ *    unchanged (RAW = "Rules As Written"). Note that a compendium
+ *    monster's printed HP is ITSELF the standard 5e average-HP formula
+ *    (count * (die/2 + 0.5) + bonus, floored) applied by the book's own
+ *    designers — so a separate "average" mode here would almost always
+ *    just recompute the same number "raw" already gives you. Replaced
+ *    with "minroll" instead, which gives a genuinely different value.
+ *  - "minroll": every hit die at its minimum face (1), count * 1 + bonus
+ *    — the worst-case-luck mirror of "maxroll", for a deliberately
+ *    weaker/easier encounter.
  *  - "maxroll": every hit die at its maximum face, count * die + bonus —
  *    the common "no bad luck" homebrew toughening technique.
  *
- * Falls back to `currentMax` for "average"/"maxroll" if the formula can't
+ * Falls back to `currentMax` for "minroll"/"maxroll" if the formula can't
  * be parsed (missing or non-standard), rather than producing 0 HP.
  *
  * @param {number} currentMax
  * @param {string|undefined} formula
- * @param {"raw"|"average"|"maxroll"} mode
+ * @param {"raw"|"minroll"|"maxroll"} mode
  * @returns {number}
  */
 export function computeHpForMode(currentMax, formula, mode) {
@@ -50,5 +54,5 @@ export function computeHpForMode(currentMax, formula, mode) {
   if (!parsed) return currentMax;
 
   if (mode === "maxroll") return parsed.count * parsed.die + parsed.bonus;
-  return Math.floor(parsed.count * (parsed.die / 2 + 0.5)) + parsed.bonus; // "average"
+  return parsed.count * 1 + parsed.bonus; // "minroll"
 }

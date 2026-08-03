@@ -74,7 +74,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   /** @type {Map<string, {monster:object, count:number}>} keyed by uuid */
   encounter = new Map();
 
-  /** How every monster's HP in the encounter is determined at Create Combat time: "raw" (printed stat block, no change), "average", or "maxroll". Independent of Boss-ify — see scaleEncounterHp() in monster-scaling.js. */
+  /** How every monster's HP in the encounter is determined at Create Combat time: "raw" (printed stat block, no change), "minroll", or "maxroll". Independent of Boss-ify — see scaleEncounterHp() in monster-scaling.js. */
   encounterHpMode = "raw";
 
   partyLevel = 4;
@@ -748,7 +748,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
           <p><strong>Boss-ify…</strong>: opens a dialog to make the boss tougher. Pick RAW (no change), Moderate, High, or Deadly — this scales the boss's HP and damage up (with a small boost to AC and ability scores too), so a single boss can actually threaten a whole party.</p>
           <p><strong>Minion</strong>: turns a monster into a fragile "minion" with fixed low HP and fixed damage (no rolling) — great for fast, disposable group fights. Costs much less of the XP budget, so a crowd of them is affordable.</p>
           <p><strong>Lair</strong>: marks a monster as fighting in its own lair, correctly increasing its XP cost per the 2024 rules (only shown for monsters that actually have lair actions).</p>
-          <p><strong>Encounter HP</strong>: choose how every monster's HP is set when placed — RAW (as printed), Average, or Maxroll (always the highest possible roll).</p>
+          <p><strong>Encounter HP</strong>: choose how every monster's HP is set when placed — RAW (as printed), Minroll (always the lowest possible roll), or Maxroll (always the highest possible roll).</p>
           <p><strong>Deploy Encounter</strong>: places tokens on the map and starts a Combat with everything currently in the list.</p>
           <p><strong>Revert</strong> (shows up once Boss-ify/Minion-ify has been applied): restores that specific monster's original stats.</p>
           <p><strong>Save As… / Load / Delete</strong> (below "Encounter"): save the current monster list, party config, and any already-rolled Treasure Hoard as a named preset — visible to every GM in this world, so a prepared encounter can be pulled back up in a later session.</p>
@@ -1327,7 +1327,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         // Global HP mode: only for freshly-created, plain (non-Boss/Minion)
         // actors — Boss-ify and Minion-ify already fully determine HP
         // themselves, and this would otherwise immediately overwrite their
-        // work with a fresh average/maxroll computed from the ORIGINAL
+        // work with a fresh minroll/maxroll computed from the ORIGINAL
         // hp.formula, undoing whatever they just set.
         if (this.encounterHpMode !== "raw" && !shouldBossify && !shouldMinionify) {
           try {

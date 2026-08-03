@@ -408,9 +408,9 @@ export async function revertMinionify(actor) {
 
 /**
  * Sets an actor's HP according to the chosen Encounter HP mode ("raw" =
- * leave the printed stat block alone, "average" = recompute from the hit-
- * point dice formula, "maxroll" = every hit die at max) — see
- * computeHpForMode() in hp-formula.js for the actual math. Deliberately
+ * leave the printed stat block alone, "minroll" = every hit die at 1,
+ * "maxroll" = every hit die at max) — see computeHpForMode() in
+ * hp-formula.js for the actual math. Deliberately
  * simple and NOT reversible — unlike Boss-ify, this has no flag/snapshot/
  * revert, matching the "just a general knob" scope the GM asked for
  * (ordinary encounter monsters never had a revert option either). Only

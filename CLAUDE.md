@@ -928,3 +928,35 @@
   da die Actor-/Item-Erzeugung selbst über den kompletten Pfad korrekt
   lief. `module.json`s `compatibility.verified` auf `"14"` angehoben,
   README-Status-Zeile mitgezogen. Test-Actor danach wieder gelöscht.
+- Encounter-HP-Modus "Average" durch "Minroll" ersetzt (seit 2026-08, auf
+  Nutzerbeobachtung): "RAW (printed)" und "Average" lieferten für praktisch
+  jedes Kompendium-Monster denselben Wert — 5e-Statblocks drucken HP schon
+  immer als die Durchschnittsformel selbst (`Anzahl × (Würfelgröße/2 +
+  0,5) + Bonus`, abgerundet), exakt dieselbe Formel, die der alte
+  "average"-Modus in `computeHpForMode()` (hp-formula.js) erneut berechnet
+  hat. Der Dropdown bot also zwei Optionen, die de facto identisch waren.
+  Ersetzt durch "Minroll" (jeder Trefferwürfel auf 1 statt auf Maximum) —
+  das spiegelbildliche Gegenstück zu "Maxroll", ergibt jetzt drei wirklich
+  unterschiedliche Werte (Minroll < RAW < Maxroll). RAW bleibt Default.
+  Reine Umbenennung/Neuimplementierung des Mode-Strings
+  (`"average"`→`"minroll"`) an allen Stellen (Template-Dropdown,
+  `computeHpForMode()`, Doc-Kommentare, Help-Dialog-Text, README) — keine
+  Rückwärtskompatibilität für alte gespeicherte Presets mit
+  `encounterHpMode:"average"` gebaut, da dieses Feld laut Code-Review
+  aktuell gar nicht in `#onSavePreset()`/`#onLoadPreset()` mit
+  gespeichert wird (nur Party Level/Size/Difficulty/Monsterliste/Hoard) —
+  ein `"average"`-Preset-Wert kann also gar nicht vorkommen. 12
+  Hand-Assertions gegen `node` (u.a. Minroll < RAW < Maxroll als
+  ausdrücklicher Drei-Werte-Vergleich, Fallback-Verhalten bei
+  unparsbarer Formel) — reine deterministische Mathematik, kein RNG.
+  Live verifiziert: Gargoyle (`7d8 + 21`) mit Encounter-HP-Modus
+  "Minroll" über "Deploy Encounter" erzeugt → echter Actor hatte
+  `hp.max === hp.value === 28` (= 7×1+21), zur Kontrolle: RAW wäre 52,
+  Maxroll 77 — alle drei jetzt tatsächlich verschieden. Bei diesem Test
+  einen bekannten Stolperstein aus einem früheren Eintrag erneut
+  getroffen (Namenskollision bei `data-action="createCombat"` zwischen
+  unserem Button und Foundrys eigenem Encounter-Tracker-Header) und durch
+  Scoping auf `#encounter-builder-2024` gelöst — betrifft nur
+  automatisierte Testklicks, kein Problem für echte Nutzer:innen (deren
+  Klick trifft immer nur den sichtbaren Button vor ihnen). Test-Actor
+  danach wieder gelöscht.
