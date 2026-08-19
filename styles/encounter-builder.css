@@ -236,6 +236,85 @@
   cursor: pointer;
 }
 
+/* Narrower than the other auto-fill-controls selects — "Count" only ever
+   holds a couple digits, no reason for it to claim as much width as
+   "Creature Type". */
+.encounter-builder-2024 .count-field select {
+  width: 4.5em;
+}
+
+/* Compact "pick a role + count, click +" builder that sits inline in the
+   same flex row as the rest of .auto-fill-controls (wrapping only if the
+   window is too narrow) instead of a full-width row per role — most
+   encounters only ever use 0-2 role constraints, so five permanently
+   visible fields was mostly empty space. */
+.encounter-builder-2024 .role-constraint-builder {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.encounter-builder-2024 .role-constraint-add {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.encounter-builder-2024 .role-constraint-add input[type="number"] {
+  width: 3.5em;
+}
+
+.encounter-builder-2024 .role-constraint-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: rgba(201, 162, 39, 0.15);
+  border: 1px solid rgba(201, 162, 39, 0.5);
+  border-radius: 999px;
+  padding: 0.15rem 0.4rem 0.15rem 0.6rem;
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
+.encounter-builder-2024 .role-constraint-chip button {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 0.2rem;
+  font-size: 1em;
+  line-height: 1;
+}
+
+.encounter-builder-2024 .role-constraint-chip button:hover {
+  color: #c62828;
+}
+
+.encounter-builder-2024 .role-constraint-add select[name="roleConstraintDraftCount"] {
+  width: 3.5em;
+}
+
+.encounter-builder-2024 button[data-action="addRoleConstraint"]:disabled,
+.encounter-builder-2024 select[name="roleConstraintDraftCount"]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Role badges in the Encounter list — same pill shape as the Auto-Fill
+   constraint chips (visually ties "this monster is tagged X" to "Auto-Fill
+   can reserve slots for X"), but plain/muted since these aren't
+   interactive and sit in an already-dense list row. */
+.encounter-builder-2024 .role-badge {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.75em;
+  white-space: nowrap;
+}
+
 .encounter-builder-2024 .auto-fill-warning {
   color: #e6a23c;
   font-style: italic;

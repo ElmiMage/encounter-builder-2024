@@ -32,11 +32,26 @@ with a fully editable preview before creating anything.
   Mortals!*) — fixed low HP and fixed, non-random damage per hit, at a
   fraction of its normal XP cost — for fast, disposable group fights.
   Also reversible
+- **Elite**: a lighter, no-configuration alternative to Boss-ify — mark
+  any number of monsters as Elite to scale them at a fixed Moderate tier
+  (130% HP/damage, +1 AC, +2 to ability scores), without the "only one
+  boss per encounter" restriction. Boss, Elite, and Minion are mutually
+  exclusive per monster
+- **Encounter Composition**: classify monsters into roles (Brute/Tank/
+  Skirmisher/Cleric/Caster) based on HP/AC/damage/spellcasting relative to
+  other monsters of the same CR — a homebrew heuristic, not from any book.
+  "Compute Roles" scores the currently-filtered monster list (narrow by CR/
+  type first to keep it fast), then a Role filter joins the other search
+  filters, and Auto-Fill gains optional per-role slot counts (e.g. "2
+  Brute + 2 Skirmisher + 2 Caster") on top of its normal budget-fitting
 - **Encounter HP** mode (RAW / Minroll / Maxroll) controls how every
   monster's HP is set when placed, independent of Boss-ify/Minion
-- Boss-ify's tier percentages/AC/ability bonuses and Minion's XP discount
+- Boss-ify's tier percentages/AC/ability bonuses, Minion's XP discount,
+  and Boss Encounter mode's budget split between the boss and its adds
   are GM-tunable per-user under Settings > Configure Settings > Module
-  Settings > "Configure Values" (defaults match the numbers above)
+  Settings > "Configure Values" (defaults match the numbers above); the
+  starting Encounter HP mode and whether Boss Encounter starts checked
+  are separate per-user settings right in the main Module Settings list
 - In-app **Help** button (next to the tabs) explains every button and
   field in plain language
 - Lair Actions: monsters that have them get a per-encounter "Lair" toggle,

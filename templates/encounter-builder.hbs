@@ -75,8 +75,8 @@
   </details>
 
   <section class="auto-fill-controls">
-    <label>
-      Desired Monster Count
+    <label class="count-field">
+      Count
       <select name="desiredCount">
         {{#each desiredCountOptions}}
           <option value="{{this}}" {{#if (eq this ../desiredCount)}}selected{{/if}}>{{this}}</option>
@@ -97,7 +97,34 @@
       <input type="checkbox" name="bossMode" {{#if bossMode}}checked{{/if}} />
       Boss Encounter
     </label>
+
+    <div class="role-constraint-builder" title="Reserve Auto-Fill slots for monsters tagged with a role (see Compute Roles above) — any slots left over out of Count above fill unconstrained from the whole pool, same as plain Auto-Fill{{#if bossMode}}. One Count slot always goes to the boss itself, never role-constrained — only the remaining slots (the supporting adds) can be reserved here{{/if}}">
+      <label class="role-constraint-add">
+        Roles{{#if bossMode}} (adds){{/if}}
+        <select name="roleConstraintDraftRole">
+          {{#each availableRoles}}
+            <option value="{{this.value}}" {{#if (eq ../roleConstraintDraftRole this.value)}}selected{{/if}}>{{this.label}}</option>
+          {{/each}}
+        </select>
+        <select name="roleConstraintDraftCount" {{#unless roleConstraintDraftCountOptions.length}}disabled{{/unless}}>
+          {{#each roleConstraintDraftCountOptions}}
+            <option value="{{this}}" {{#if (eq this ../roleConstraintDraftCount)}}selected{{/if}}>{{this}}</option>
+          {{/each}}
+        </select>
+      </label>
+      <button type="button" class="square-btn" data-action="addRoleConstraint" {{#unless roleConstraintDraftCountOptions.length}}disabled title="No Count slots left to reserve — raise Count or remove a constraint first"{{else}}title="Add this role constraint"{{/unless}}>+</button>
+      {{#each roleConstraints}}
+        <span class="role-constraint-chip">
+          {{this.count}}× {{this.label}}
+          <button type="button" data-action="removeRoleConstraint" data-role="{{this.role}}" title="Remove this constraint">×</button>
+        </span>
+      {{/each}}
+    </div>
   </section>
+
+  {{#if roleConstraintOverflow}}
+    <p class="auto-fill-warning">Role counts above add up to more than Count — Auto-Fill will trim the excess.</p>
+  {{/if}}
 
   {{#if autoFillWarning}}
     <p class="auto-fill-warning">{{autoFillWarning}}</p>
@@ -136,6 +163,21 @@
             {{/each}}
           </select>
         {{/if}}
+      </div>
+      <div class="monster-filter-row monster-filter-row-secondary">
+        <select name="roleFilter">
+          <option value="any" {{#if (eq roleFilter "any")}}selected{{/if}}>Any Role</option>
+          {{#each availableRoles}}
+            <option value="{{this.value}}" {{#if (eq ../roleFilter this.value)}}selected{{/if}}>{{this.label}}</option>
+          {{/each}}
+        </select>
+        <button type="button" data-action="computeRoles" {{#if rolesComputing}}disabled{{/if}} title="Classify monsters matching the current CR/Type/Size/Subtype/Habitat/search filters into roles (Brute/Tank/Skirmisher/Cleric/Caster) based on HP/AC/damage/spellcasting relative to same-CR monsters. Needed once before the Role filter above will match anything — narrow the other filters first to keep this fast.">
+          {{#if rolesComputing}}
+            Computing…{{#if roleComputeProgress.total}} ({{roleComputeProgress.done}}/{{roleComputeProgress.total}}){{/if}}
+          {{else}}
+            Compute Roles
+          {{/if}}
+        </button>
       </div>
       <ul class="monster-list">
         {{#each monsters}}
@@ -179,6 +221,9 @@
         {{#each encounterEntries}}
           <li>
             <span>{{this.count}}x <span class="entry-name-link" data-action="viewMonster" data-uuid="{{this.monster.uuid}}" title="Click to view stat block">{{this.monster.name}}</span> ({{#if this.effectiveXp}}{{this.effectiveXp}}{{else}}?{{/if}} XP each{{#if this.inLair}}, in lair{{/if}})</span>
+            {{#each this.roleLabels}}
+              <span class="role-badge">{{this}}</span>
+            {{/each}}
             <span class="qty-buttons">
               {{#if this.monster.hasLairActions}}
                 <label class="lair-toggle" title="Fighting in its own lair — adjusts XP to CR+1, matching the 2024/2025 Monster Manual's lair-action fix">
@@ -194,6 +239,12 @@
                 </button>
                 {{#if this.bossifiedActorId}}
                   <button type="button" data-action="revertBossify" data-actor-id="{{this.bossifiedActorId}}" title="Restore this boss's original stats">Revert</button>
+                {{/if}}
+              {{/if}}
+              <button type="button" class="eb-toggle-pill {{#if this.isElite}}active{{/if}}" data-action="toggleElite" data-uuid="{{this.monster.uuid}}" title="Scale this monster up at the fixed Moderate Boss-ify tier (130% HP/damage, +1 AC, +2 to ability scores) — no per-monster tuning, any number of entries can be Elite at once">Elite</button>
+              {{#if this.isElite}}
+                {{#if this.bossifiedActorId}}
+                  <button type="button" data-action="revertBossify" data-actor-id="{{this.bossifiedActorId}}" title="Restore this monster's original stats">Revert</button>
                 {{/if}}
               {{/if}}
               <button type="button" class="eb-toggle-pill {{#if this.minionify}}active{{/if}}" data-action="toggleMinionify" data-uuid="{{this.monster.uuid}}" title="Convert to MCDM Minion stats (Flee, Mortals!) at Create Combat — fixed low HP and flat damage per hit for this CR, no AC/attack changes">Minion</button>

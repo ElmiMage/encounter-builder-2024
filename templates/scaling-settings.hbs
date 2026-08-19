@@ -27,6 +27,15 @@
     </label>
   </fieldset>
 
+  <fieldset>
+    <legend>Auto-Fill</legend>
+    <label class="scaling-settings-minion">
+      Boss Encounter budget share (%)
+      <input type="number" name="bossBudgetSharePercent" value="{{bossBudgetSharePercent}}" min="0" max="100" />
+    </label>
+    <p class="scaling-settings-hint">How much of the total XP budget Boss Encounter mode's Auto-Fill reserves for the boss itself — the rest goes to supporting adds. Ignored (treated as 100%) when Desired Count is 1.</p>
+  </fieldset>
+
   <div class="scaling-settings-buttons">
     <button type="button" data-action="save">Save</button>
     <button type="button" data-action="resetDefaults">Reset to Defaults</button>

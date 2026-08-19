@@ -2,6 +2,7 @@ import { EncounterBuilderApp } from "./encounter-builder-app.js";
 import { humanizeToken } from "./format.js";
 import { ScalingSettingsApp } from "./scaling-settings-app.js";
 import { MINION_XP_MULTIPLIER } from "./minion-scaling.js";
+import { DEFAULT_BOSS_SHARE } from "./auto-fill.js";
 import { loadFullActor } from "./compendium-browser.js";
 
 let appInstance = null;
@@ -80,6 +81,23 @@ Hooks.once("init", () => {
     choices: { auto: "Tier (RAW)", partyLevel: "Match Party Level (smoothed)" },
     default: "auto",
   });
+  game.settings.register("encounter-builder-2024", "defaultEncounterHpMode", {
+    name: "Default Encounter HP",
+    hint: "The Encounter HP mode the Encounter Builder starts on each time you reload Foundry.",
+    scope: "client",
+    config: true,
+    type: String,
+    choices: { raw: "RAW (printed)", minroll: "Minroll", maxroll: "Maxroll" },
+    default: "raw",
+  });
+  game.settings.register("encounter-builder-2024", "defaultBossMode", {
+    name: "Default Boss Encounter",
+    hint: "Whether the 'Boss Encounter' checkbox starts checked each time you open the Encounter Builder.",
+    scope: "client",
+    config: true,
+    type: Boolean,
+    default: false,
+  });
 
   // Boss-ify/Minion-ify tuning values — hidden from the default settings
   // list (config:false, like the compendium-selection settings above) since
@@ -101,10 +119,19 @@ Hooks.once("init", () => {
     type: Number,
     default: Math.round(MINION_XP_MULTIPLIER * 100),
   });
+  // Same "hidden raw value, edited via the menu app" pattern as the two
+  // settings above — how much of the total XP budget Boss Encounter mode
+  // reserves for the boss itself (the rest goes to supporting adds).
+  game.settings.register("encounter-builder-2024", "bossBudgetSharePercent", {
+    scope: "client",
+    config: false,
+    type: Number,
+    default: Math.round(DEFAULT_BOSS_SHARE * 100),
+  });
   game.settings.registerMenu("encounter-builder-2024", "scalingConfigMenu", {
     name: "Boss-ify / Minion-ify Values",
     label: "Configure Values",
-    hint: "Edit the HP/damage percentages and AC/ability bonuses used by Boss-ify's tiers, and the XP discount Minion-ify applies.",
+    hint: "Edit the HP/damage percentages and AC/ability bonuses used by Boss-ify's tiers, the XP discount Minion-ify applies, and how much of the budget Boss Encounter mode reserves for the boss.",
     icon: "fa-solid fa-sliders",
     type: ScalingSettingsApp,
     restricted: true,

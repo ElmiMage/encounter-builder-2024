@@ -1,12 +1,14 @@
 /**
- * Settings-menu editor for Boss-ify's tier percentages/AC/ability bonuses
- * and Minion-ify's XP cost percentage — registered via
- * game.settings.registerMenu() in main.js instead of exposing 10 separate
- * raw fields in Foundry's default Module Settings list. Backing storage is
- * two hidden (config:false) settings: "bossifyTierConfig" (a partial
- * override object, merged onto BOSSIFY_TIERS defaults by
- * mergeTierConfig() — see bossify-scaling.js) and "minionXpMultiplier" (a
- * plain 0-100 percent number).
+ * Settings-menu editor for Boss-ify's tier percentages/AC/ability bonuses,
+ * Minion-ify's XP cost percentage, and Boss Encounter mode's budget split
+ * — registered via game.settings.registerMenu() in main.js instead of
+ * exposing a dozen separate raw fields in Foundry's default Module
+ * Settings list. Backing storage is three hidden (config:false) settings:
+ * "bossifyTierConfig" (a partial override object, merged onto
+ * BOSSIFY_TIERS defaults by mergeTierConfig() — see bossify-scaling.js),
+ * "minionXpMultiplier" (a plain 0-100 percent number), and
+ * "bossBudgetSharePercent" (also 0-100, see DEFAULT_BOSS_SHARE in
+ * auto-fill.js).
  *
  * Client-scoped (like this module's other preferences) — each GM tunes
  * their own values, consistent with autoSyncParty/defaultDifficulty/
@@ -15,6 +17,7 @@
 
 import { BOSSIFY_TIERS, BOSSIFY_TIER_ORDER, mergeTierConfig } from "./bossify-scaling.js";
 import { MINION_XP_MULTIPLIER } from "./minion-scaling.js";
+import { DEFAULT_BOSS_SHARE } from "./auto-fill.js";
 
 const { HandlebarsApplicationMixin, ApplicationV2 } = foundry.applications.api;
 const MODULE_ID = "encounter-builder-2024";
@@ -44,10 +47,12 @@ export class ScalingSettingsApp extends HandlebarsApplicationMixin(ApplicationV2
   async _prepareContext() {
     const tiers = mergeTierConfig(game.settings.get(MODULE_ID, "bossifyTierConfig"));
     const minionXpPercent = game.settings.get(MODULE_ID, "minionXpMultiplier");
+    const bossBudgetSharePercent = game.settings.get(MODULE_ID, "bossBudgetSharePercent");
 
     return {
       tierRows: TUNABLE_TIERS.map((key) => ({ key, ...tiers[key] })),
       minionXpPercent,
+      bossBudgetSharePercent,
     };
   }
 
@@ -68,9 +73,11 @@ export class ScalingSettingsApp extends HandlebarsApplicationMixin(ApplicationV2
       };
     }
     const minionXpPercent = readNum("minionXpPercent", Math.round(MINION_XP_MULTIPLIER * 100));
+    const bossBudgetSharePercent = readNum("bossBudgetSharePercent", Math.round(DEFAULT_BOSS_SHARE * 100));
 
     await game.settings.set(MODULE_ID, "bossifyTierConfig", tierConfig);
     await game.settings.set(MODULE_ID, "minionXpMultiplier", minionXpPercent);
+    await game.settings.set(MODULE_ID, "bossBudgetSharePercent", bossBudgetSharePercent);
 
     ui.notifications.info("Boss-ify / Minion-ify values saved.");
     this.close();
@@ -79,6 +86,7 @@ export class ScalingSettingsApp extends HandlebarsApplicationMixin(ApplicationV2
   static async #onResetDefaults(event, target) {
     await game.settings.set(MODULE_ID, "bossifyTierConfig", {});
     await game.settings.set(MODULE_ID, "minionXpMultiplier", Math.round(MINION_XP_MULTIPLIER * 100));
+    await game.settings.set(MODULE_ID, "bossBudgetSharePercent", Math.round(DEFAULT_BOSS_SHARE * 100));
     this.render();
   }
 

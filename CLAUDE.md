@@ -960,3 +960,299 @@
   automatisierte Testklicks, kein Problem für echte Nutzer:innen (deren
   Klick trifft immer nur den sichtbaren Button vor ihnen). Test-Actor
   danach wieder gelöscht.
+- Monster-Rollen + Elite-Flag (monster-roles.js, monster-role-data.js,
+  auto-fill.js, encounter-builder-app.js, seit 2026-08, auf Nutzerwunsch —
+  Encounter Composition nach Wunsch, ausführlich am selben Tag im Chat
+  durchgesprochen): neues Feature-Paar, beide Teile fertig implementiert
+  und live verifiziert (Elite-Flag, Rollen-Klassifizierung inkl.
+  Foundry-Anbindung/Filter-UI/Auto-Fill-Erweiterung — siehe unten).
+  **Elite** ist ein drittes, pro Zeile Drei-Wege-exklusives Flag neben
+  Boss/Minion (`entry.isElite`, `#onToggleElite`) — auf Nutzerwunsch bewusst
+  OHNE eigene Tier-Konfiguration: nutzt exakt `BOSSIFY_TIERS.moderate`
+  (130% HP/Schaden, +1 AC, +2 Ability-Score) über denselben
+  `bossifyActor()`-Pfad wie ein manuell gewählter Boss-ify-Tier "Moderate"
+  — kein neuer Skalierungscode. Anders als Boss (nur EIN Encounter-Boss
+  gleichzeitig, `#clearBossifyExcept`) hat Elite KEINE Cross-Entry-
+  Exklusivität, beliebig viele Zeilen können gleichzeitig Elite sein.
+  `#onCreateCombat`s Spawn-Loop berechnet `effectiveTier` (= "moderate" bei
+  isElite, sonst das gewählte `bossifyTier`) und leitet damit denselben
+  Reuse-Lookup/Actor-Erzeugungspfad wie Boss-ify — ein Elite-Goblin und ein
+  manuell auf Boss-ify-Tier "Moderate" gesetzter Boss-Goblin sind
+  mechanisch identisch und teilen sich bewusst denselben World-Actor
+  ("Goblin (Moderate)"), keine separate "(Elite)"-Benennung. Wichtiger
+  Stolperstein: die vier `applyAC/applyHP/applyAbilities/applyDamageDice`-
+  Flags werden normalerweise vom Boss-ify-Dialog gesetzt, den Elite nie
+  öffnet — blieben sie auf dem Entry `undefined`, hätte der Reuse-Lookup
+  (`snap.applyAC === applyAC`) nie getroffen (`undefined !== true`, da
+  `bossifyActor` beim Speichern des Snapshots bereits auf `true` aufgelöste
+  Werte ablegt). Gelöst über `effectiveApplyAC = applyAC ?? true` (und
+  analog für die anderen drei) vor Reuse-Lookup UND `bossifyActor()`-Aufruf.
+  Live verifiziert (2026-08): Drei-Wege-Exklusivität per direktem
+  Action-Handler-Aufruf durchgetestet (Boss→Elite löscht isBoss+
+  bossifyTier, Elite→Boss löscht isElite, Boss+Elite(erzwungen)→Minion
+  löscht beide) — alle drei Übergänge korrekt. End-to-End über "Deploy
+  Encounter": Goblin (Basis HP 7/AC 15/DEX 14/Scimitar 1d6) mit Elite
+  markiert → echter Actor "Goblin (Moderate)" mit HP 9 (7×1.3, abgerundet),
+  AC 16 (+1), DEX 16 (+2), Schaden 1d6+1 (abgerundete Würfelzahl +
+  Rundungsausgleich) — exakt die erwarteten Moderate-Tier-Werte,
+  `bossifySnapshot`-Flag korrekt mit Original-Werten für Revert. Combat
+  mit 1 Combatant, 1 Token auf der Szene. Danach vollständig aufgeräumt
+  (Combat, Actor UND der verwaiste Token gelöscht — bei ungelinkten Tokens
+  löscht das Entfernen des Actors den bereits platzierten Token NICHT
+  automatisch mit, das musste separat erledigt werden).
+  Automatisierungs-Notiz: das synthetische `canvas.stage.emit("pointerdown",
+  ...)`-Muster aus einem früheren Eintrag brauchte diesmal einen zweiten
+  Anlauf — ein per `.click()` ausgelöster erster Testlauf hinterließ
+  offenbar einen unbeobachteten Zwischenzustand (kein `listenerCount`
+  nachweisbar, App aber bereits minimiert), erst ein zweiter Klick+Emit im
+  selben Skript-Durchlauf löste Actor-/Token-/Combat-Erzeugung sichtbar
+  aus. Kein Hinweis auf ein echtes Code-Problem (nur Automatisierungs-
+  Timing), da das Endergebnis danach exakt korrekt war.
+  **Rollen-Klassifizierung** (`monster-roles.js`, reine Logik, node --check
+  + 18 Hand-Assertions, noch NICHT an Foundry-Datenerhebung/UI
+  angeschlossen): fünf additive, nicht-exklusive Tags — Brute (HP),
+  Tank (AC), Skirmisher (Schaden÷HP-Verhältnis), Cleric (WIS-Spellcasting),
+  Caster (INT/CHA-Spellcasting zusammengefasst). Alle Schwellen live gegen
+  echte Kompendium-Daten kalibriert (CR 5 n=129, CR 10 n=47, siehe
+  Chat-Verlauf desselben Tages für die vollständige Herleitung), nicht
+  geraten: Top-25%-Perzentil (>=, nicht nur `>`, wegen Werte-Häufungen bei
+  kleinen Stichproben) innerhalb einer CR-Vergleichsgruppe, die bei zu
+  kleiner Stichprobe (< 20) automatisch auf Nachbar-CRs erweitert wird.
+  Skirmisher nutzt bewusst Schaden÷HP statt Attack-Bonus (Streuung bei
+  CR 5 nur SD=1, unbrauchbar als Signal) oder reinem Schaden (44%
+  Überschneidung mit Brute, da HP und Schaden in 5e-Design oft gemeinsam
+  mit Monstergröße skalieren — die Verhältnis-Variante senkte das auf
+  16-19%). Cleric/Caster sind bewusst binär statt perzentil-basiert und
+  verlangen zusätzlich mindestens 1 echtes Spell-Item — `system.attributes.
+  spellcasting` allein ist bei 57% der CR-5-Monster gesetzt, obwohl sie
+  null Spells haben (dnd5e-Systemdefault, kein echtes Caster-Signal).
+  **Foundry-Anbindung** (`monster-role-data.js`): Schaden/Spellcasting
+  stehen NICHT im leichten `loadMonsterIndex()`-Index (nur über volle
+  Actor-Dokumente erreichbar, live gemessen ~40ms/Dokument) — deshalb
+  bewusst NICHT synchron beim normalen Index-Aufbau mitgeladen (würde das
+  "lightweight index"-Designprinzip brechen, bei 1648 indexierten Monstern
+  in der Testwelt wären das >60s beim bloßen App-Öffnen). Stattdessen
+  lazy über einen neuen "Compute Roles"-Button (`#onComputeRoles`),
+  skaliert auf die AKTUELL gefilterte Monsterliste (CR/Type/Size/Subtype/
+  Habitat/Suche, via `#getMonstersExcluding("role")` — dasselbe Muster wie
+  die anderen Dropdown-Filter), nicht den kompletten Kompendium-Bestand.
+  Rohstats (`rawStatsCache`) bleiben für die Session gecacht, sobald
+  einmal geholt — Rollen-ZUORDNUNG selbst wird bei jedem Aufruf frisch aus
+  der aktuellen Population neu berechnet (Perzentile hängen davon ab,
+  welche Kompendien gerade aktiv sind, das darf nicht stale sein).
+  Neuer Rollen-Filter-Dropdown in der Suchliste (`roleFilter`, analog zu
+  den bestehenden CR/Size/Subtype/Habitat-Filtern) — vor dem ersten
+  "Compute Roles"-Klick ist `roleData` leer, ein nicht-"Any"-Rollenfilter
+  zeigt dann bewusst 0 Treffer statt den Filter stillschweigend zu
+  ignorieren. Live verifiziert (2026-08): 129 CR-5-Monster nach "Compute
+  Roles" (5.25s) korrekt auf Brute 36/Tank 39/Skirmisher 33/Cleric 2/
+  Caster 12 gefiltert (die Zahlen liegen etwas über den Werten aus der
+  Chat-Analyse, weil die Schwelle bewusst `>=` statt `>` nutzt — siehe
+  monster-roles.js-Kommentar zur Werte-Häufungs-Korrektur).
+  **Auto-Fill-Erweiterung** (`auto-fill.js`, `autoFillEncounterWithRoles`):
+  neue Funktion neben der bestehenden `autoFillEncounter` (die unverändert
+  bleibt, nur wenn keine Rollen-Constraints gesetzt sind). Fünf feste
+  Zahlenfelder im UI (`roleConstraintCounts`, ein Feld pro Rolle statt
+  einer dynamischen Zeilen-Liste — es gibt ohnehin nur fünf Rollen) legen
+  fest, wie viele Slots für welche Rolle reserviert werden; die restlichen
+  Slots (Desired Count minus Summe der Constraints) füllen sich
+  unverändert unbeschränkt aus dem Gesamt-Pool. Jede Gruppe (jeder
+  Rollen-Constraint, dann die unbeschränkte Restgruppe) bekommt einen
+  Budget-Anteil proportional zu ihrer eigenen Slot-Zahl aus dem
+  URSPRÜNGLICHEN Gesamtbudget, nicht aus einem schrumpfenden Restbudget —
+  hält den Pro-Kreatur-Zielwert für jede Gruppe bei ungefähr
+  budget/desiredCount statt spätere Gruppen mit einem verzerrten Rest
+  dastehen zu lassen. Bewusst NICHT mit Boss-Mode kombiniert (Rollen-
+  Constraints werden ignoriert, sobald "Boss Encounter" aktiv ist — "ein
+  Slot pro Rolle reservieren" und "ein großer Solo-Boss + Adds" sind zwei
+  verschiedene Konzepte). 11 Hand-Assertions (reine Logik, kein Foundry-
+  Bezug, `node`-testbar) plus Live-Test: Party Level 10/Größe 4/Moderate,
+  CR-5-Pool, Constraint "2 Brute + 2 Skirmisher + 2 Caster" bei Desired
+  Count 6 → tatsächlich genau 2 Brute-, 2 Skirmisher- und 2 Caster-
+  getaggte Monster ausgewählt (Otyugh+Giant Shark / Bulette+Hill Giant /
+  Night Hag×2), Gesamtzahl korrekt 6. Erzeugt keine Actors/Tokens, daher
+  kein Cleanup-Bedarf über das Leeren der Encounter-Liste hinaus.
+  **Noch nicht umgesetzt** (bewusst außerhalb des Scopes dieser Runde):
+  Rollen-Badges direkt in der Monster-Suchlisten-Zeile (aktuell nur über
+  den Filter-Dropdown sichtbar, nicht als Inline-Anzeige — hätte auch
+  `#buildMonsterListHtml`, den JS-Rebuild-Pfad beim Tippen im Suchfeld,
+  mitgezogen werden müssen).
+  seit 2026-08, Nutzer-Bugreport per Screenshot): "Hobgoblin Brandbearer"
+  (MCDM Flee, Mortals!) wurde mit 1800 statt korrekt 225 XP in die
+  Encounter-Liste übernommen. Root Cause live gegen die Testwelt
+  gefunden: `pack.getIndex()` liefert für diesen Actor `system.details.
+  xp: {}` (leer) statt `{value: 225}` — der wahre Wert wird von MCDMs
+  eigenem Modul erst zur Laufzeit berechnet (Hook bei
+  Document-Prepare, abhängig von `flags["mcdm-flee-mortals-where-evil-
+  lives"].role === "minion"`), nie als Rohdatum gespeichert, und daher
+  für den Index unsichtbar. Der bestehende CR-Fallback (`xpForChallenge
+  Rating(5) = 1800`) griff dadurch fälschlich. Kontrollprobe bestätigt:
+  ein Nicht-Minion-Eintrag derselben Kompendium (Hobgoblin Firerunner,
+  `role: "skirmisher"`) hatte sein echtes XP exakt deckungsgleich mit
+  dem CR-Fallback — der Bug betrifft also gezielt nur `role:"minion"`-
+  geflaggte Einträge, nicht das Kompendium/den CR-Fallback generell.
+  Fix: neue `MINION_ROLE_FLAGS`-Liste (aktuell ein Eintrag, für MCDM
+  Flee Mortals; weitere Kompendien mit demselben Muster können ergänzt
+  werden) — deren Flag-Pfad wird zusätzlich in `INDEX_FIELDS` mit
+  indexiert (Flags SIND normale Rohdaten, anders als das berechnete
+  XP-Feld, und daher zuverlässig im leichten Index verfügbar). Nur für
+  Einträge mit gesetztem Flag wird gezielt das volle Actor-Dokument
+  nachgeladen (`pack.getDocument()`), um das echte, modul-berechnete XP
+  zu lesen — bewusst NICHT für alle Einträge (würde bei Kompendien mit
+  1000+ Monstern die Indexierung massiv verlangsamen), sondern nur für
+  die kleine, geflaggte Minderheit. Live verifiziert (2026-08): nach
+  Fix zeigt `loadMonsterIndex()` für Hobgoblin Brandbearer korrekt
+  `xp: 225`, für Hobgoblin Firerunner unverändert `xp: 1100` (keine
+  Regression). End-to-End über die echte App bestätigt: 2×
+  hinzugefügt → Encounter-Liste zeigt "2x Hobgoblin Brandbearer (225
+  XP each)", Budget-Leiste korrekt bei 450/9200 XP. Encounter-State
+  danach wieder geleert (keine Actors/Tokens erzeugt, nur In-Memory-
+  Encounter-Map betroffen). Nebenbefund für spätere Rollen-
+  Klassifizierung (siehe unten): MCDM taggt seine Monster bereits
+  selbst mit einer eigenen Rollen-Flag (`role`: u.a. "minion",
+  "skirmisher", vermutlich auch "brute"/"tank") — als zusätzliche
+  Datenquelle relevant, falls ein künftiges Rollen-Feature das
+  aufgreifen will.
+  Nachtrag (noch 2026-08, Nutzer-Feedback per Screenshot): die
+  fünf permanent sichtbaren Zahlenfelder (ein Feld pro Rolle,
+  je auf eigener volle-Breite-Zeile) nahmen optisch viel zu viel Platz
+  weg. Ersetzt durch einen kompakten "Rolle wählen + Anzahl + Add"-Baustein
+  (Dropdown + Zahlenfeld + "+"-Button), der entfernbare Chips erzeugt
+  (`roleConstraints` jetzt ein Array `{role,count}[]` statt eines festen
+  Objekts) — sitzt in derselben Flex-Zeile wie Count/Creature Type/
+  Auto-Fill-Button/Boss-Checkbox (`.auto-fill-controls`), bricht nur bei
+  schmalem Fenster um. "Desired Monster Count" zu "Count" gekürzt plus
+  schmalerer Select (4.5em statt volle Breite). Dabei einen echten Bug in
+  `autoFillEncounterWithRoles()` selbst gefunden (Nutzerfrage: "was wenn
+  ich 4 Monster will, aber 5 Brute reinschreibe?") — Rollen-Constraints
+  wurden bisher NIE gegen `desiredCount` gedeckelt, jeder Constraint wurde
+  in voller angeforderter Anzahl gefüllt, unabhängig von der Summe; bei
+  Constraint-Summe > Count hätte das tatsächlich mehr Monster erzeugt als
+  gewünscht. Fix: Constraints werden jetzt in Eingabe-Reihenfolge auf die
+  laufende Summe gedeckelt (frühere Constraints gewinnen vollständig,
+  der letzte passende wird ggf. gestutzt, überzählige komplett
+  weggelassen), mit eigener Warnmeldung. Zusätzlich ein UI-seitiger
+  `roleConstraintOverflow`-Hinweis (reine Anzeige, blockiert nichts —
+  der GM darf frei weiterbauen, sieht aber sofort warum das Ergebnis
+  gleich gekürzt wird). 5 neue Hand-Assertions für den Kappungsfall
+  (u.a. exakte Grenze ohne Warnung, Kürzung in Eingabe-Reihenfolge,
+  `actualCount` nie über `desiredCount`) — alle 16 Assertions grün.
+  Live verifiziert (2026-08): CR-5-Pool, Count 3, Constraints "2 Brute +
+  2 Tank" (Summe 4) → tatsächlich genau 3 Monster (2 Brute vollständig,
+  Tank von 2 auf 1 gestutzt), Warnung zeigt korrekt "requested 4
+  creature(s), more than the Desired Count of 3". Chips/Compact-Layout
+  ebenfalls live bestätigt (Baustein-Breite 235px/32px hoch statt vorher
+  fünf volle Zeilen).
+  Zweiter Nachtrag (noch 2026-08, Nutzer-Bugreport per Screenshot): Auto-Fill
+  mit Rollen-Constraints + Creature-Type-Filter "Undead" fand trotz
+  passender Constraints (1 Brute + 2 Skirmisher + 2 Caster) keinen einzigen
+  Treffer — Warnung "No monsters ... tagged as: brute, skirmisher, caster".
+  Root Cause: "Compute Roles" berechnet nur eine Momentaufnahme der GENAU
+  zum Klick-Zeitpunkt aktiven Filter (`#getMonstersExcluding("role")`).
+  Ändert der GM danach den Creature-Type-Filter, waren die neu
+  sichtbaren Monster nie Teil dieser Berechnung — `roleData` hat für sie
+  gar keinen Eintrag, was für `autoFillEncounterWithRoles` ununterscheidbar
+  von "geprüft, aber keine passende Rolle" aussieht. Live bestätigt: von
+  116 Undead-Monstern hatten nur 13 überhaupt Rollen-Daten (Reste eines
+  früheren CR-5-Laufs), die übrigen 103 waren nie angefasst worden. Fix:
+  neue geteilte Methode `#ensureRolesComputed(scope)` (ersetzt den Kern von
+  `#onComputeRoles`) wird jetzt auch von `#onAutoFill` selbst aufgerufen,
+  bevor es tatsächlich füllt — sorgt automatisch dafür, dass `roleData`
+  exakt den aktuell gefilterten Pool abdeckt, kein manuelles
+  Timing-Wissen ("erst Compute Roles, dann erst Filter ändern? Oder
+  umgekehrt?") mehr nötig. Nur wenn tatsächlich Rollen-Constraints aktiv
+  UND kein Boss-Mode gesetzt sind (sonst unnötiger Foundry-Dokumenten-Load).
+  Live verifiziert (2026-08, Reload nötig gewesen, da der erste Testlauf
+  noch den alten, ungepatchten Modul-Code im Browser hatte — nach echtem
+  Reload reproduzierbar): frische Session (`roleData` leer), Undead-Filter,
+  "1 Brute + 2 Skirmisher + 2 Caster", Auto-Fill OHNE vorherigen
+  "Compute Roles"-Klick → `rolesComputing` sprang korrekt auf `true`,
+  ~5s für 116 Dokumente, danach `roleData` auf 116 Einträge, Ergebnis
+  korrekt gefüllt (Shadowbound Revenant ×3 Brute+Caster, Ghost Skirmisher,
+  Frostbite Wraith Brute+Skirmisher, Gesamtzahl 5), keine Warnung mehr.
+  Dritter Nachtrag (noch 2026-08, auf Nutzerwunsch, zwei Punkte): (1) Die
+  Anzahl-Auswahl beim Rollen-Constraint-Hinzufügen ist jetzt ein Dropdown
+  statt Freitext-Zahlenfeld, dessen Optionen sich live auf die noch
+  verfügbaren Slots begrenzen — `desiredCount` minus Summe aller ANDEREN
+  Constraints (die eigene evtl. schon vorhandene Zeile zählt nicht gegen
+  sich selbst, da erneutes Hinzufügen derselben Rolle ihren Count ersetzt,
+  nicht addiert). Macht das Überschreiten von Count in der UI strukturell
+  unmöglich, statt es nur hinterher zu warnen (die Trimming-Logik in
+  `autoFillEncounterWithRoles()` bleibt trotzdem als Sicherheitsnetz
+  bestehen, z.B. falls Count NACH dem Hinzufügen von Constraints wieder
+  gesenkt wird). Neue Helper `#roleConstraintMaxFor(role)`/
+  `#clampRoleConstraintDraftCount()` — Add-Button und Anzahl-Dropdown
+  werden komplett deaktiviert, sobald für die aktuell gewählte Rolle 0
+  Slots übrig sind. Live verifiziert: Count 4, "1 Brute" hinzugefügt →
+  Dropdown für Tank zeigt korrekt nur noch 1-3; danach "3 Tank"
+  hinzugefügt (Summe jetzt 4) → Skirmisher-Dropdown zeigt 0 Optionen,
+  Select UND Add-Button sind disabled.
+  (2) Rollen-Badges direkt in der Encounter-Listen-Zeile (das zuvor unter
+  "Noch nicht umgesetzt" vermerkte Feature) — `encounterEntries` trägt
+  jetzt ein `roleLabels`-Feld (aus `roleData`, leer wenn nie berechnet,
+  kein automatischer Nachlade-Trigger nur fürs Anzeigen). Live verifiziert:
+  Hill Giant (CR 5, aus früherer Session als "Skirmisher" klassifiziert)
+  manuell zur Encounter-Liste hinzugefügt → Badge "Skirmisher" erscheint
+  korrekt neben dem Eintrag.
+  Vierter Nachtrag (noch 2026-08, Nutzer-Bugreport): der Rollen-Constraint-
+  Baustein verschwand komplett bei aktivem "Boss Encounter"
+  (`{{#unless bossMode}}`-Wrapper im Template) — auf Nutzerwunsch war das
+  falsch, Rollen sollen für die Adds auch im Boss-Modus wählbar bleiben,
+  der Boss zieht dabei nur selbst einen Slot von Count ab. Neue Funktion
+  `autoFillBossEncounterWithRoles()` (auto-fill.js) kombiniert die
+  bestehende Boss-Auswahl-Logik (unverändert aus `autoFillBossEncounter`
+  übernommen — Boss wird NIE rollen-beschränkt, reiner Budget-Fit) mit
+  `autoFillEncounterWithRoles()` für die restlichen Slots (Count-1,
+  Budget minus Boss-XP), statt Code zu duplizieren. Boss wird aus dem
+  Adds-Pool ausgeschlossen (kann nicht versehentlich doppelt als eigener
+  Add gezählt werden, auch wenn er selbst zufällig zur constraint-Rolle
+  passt). `#roleConstraintMaxFor()` zieht im Boss-Modus jetzt 1 von
+  `desiredCount` ab, bevor es die verfügbaren Dropdown-Optionen berechnet
+  — Baustein bleibt sichtbar, Tooltip/Label ("Roles (adds)") macht im
+  Boss-Modus klar, dass sich das nur auf die Unterstützer bezieht. 4 neue
+  Hand-Assertions (Boss nie rollen-gezählt, `desiredCount=1` macht
+  Constraints komplett wirkungslos, Boss aus Adds-Pool ausgeschlossen
+  selbst bei eigener passender Rolle) — alle 23 Assertions grün. Live
+  verifiziert (2026-08): Party Level 15/Größe 4/High, CR-5-Pool, Boss
+  Mode an, "2 Brute", Count 4 → Bulette korrekt als Boss markiert
+  (`isBoss:true`, seine eigenen Tags Tank/Skirmisher spielten für die
+  Boss-Auswahl keine Rolle), Otyugh + Shambling Mound als die 2
+  angeforderten Brutes, Giant Crocodile als unbeschränkter vierter Slot,
+  Gesamtzahl korrekt 4, keine Warnung.
+- Help-Dialog nachgezogen (seit 2026-08, Nutzerwunsch — "ist schon etwas
+  älter mittlerweile"): fehlte komplett Elite, der ganze Encounter-
+  Composition-Block (Compute Roles, Brute/Tank/Skirmisher/Cleric/Caster,
+  Any-Role-Filter, Roles-Baustein inkl. Boss-Mode-Zusammenspiel) und Item
+  Customize — alles drei Features aus früheren/dieser Session, nie in den
+  Hilfetext übernommen. Ergänzt, plus zwei kleinere fehlende Hinweise
+  (Klick auf Monster-Namen öffnet Stat-Block, Drag-and-Drop direkt auf die
+  Canvas). Live verifiziert: Dialog rendert alle sechs Überschriften
+  korrekt, Scroll-Fix von früher (`.window-content{overflow-y:auto}`)
+  funktioniert weiterhin (1719px Inhalt in 682px Fenster).
+- Drei weitere Settings ergänzt (seit 2026-08, auf Nutzerwunsch nach
+  Durchsicht, welche Werte noch konfigurierbar gemacht werden könnten):
+  **Default Encounter HP** und **Default Boss Encounter** als normale
+  sichtbare Settings (`defaultEncounterHpMode`/`defaultBossMode`,
+  client-scoped, genau das Muster von `defaultDifficulty`/
+  `defaultLootBasis`) — werden in `_prepareContext()`s bestehendem
+  `#defaultsApplied`-Einmal-pro-Öffnen-Block gelesen, kein neuer
+  Mechanismus. **Boss Encounter Budget Share** (`bossBudgetSharePercent`,
+  0-100%, Default 75) als drittes verstecktes (`config:false`) Setting im
+  bestehenden "Boss-ify / Minion-ify Values"-Menü (`ScalingSettingsApp`,
+  neues drittes Fieldset "Auto-Fill") — bisher war dieser Wert
+  (`bossShare` in `autoFillBossEncounter`/`autoFillBossEncounterWithRoles`)
+  ein reiner Funktions-Default (0.75), nirgends einstellbar, noch nicht
+  mal als Formularfeld. Dafür `DEFAULT_BOSS_SHARE` neu aus `auto-fill.js`
+  exportiert (ersetzt die bisher doppelt vorkommende magische Zahl 0.75 in
+  beiden Auto-Fill-Boss-Funktionen), damit Code und Setting-Default
+  garantiert übereinstimmen. `#onAutoFill` liest das Setting bei jedem
+  Lauf frisch und reicht es als `bossShare`-Parameter durch. Live
+  verifiziert (2026-08): Settings-Menü zeigt neues Feld korrekt (Wert 75),
+  auf 60 geändert und gespeichert → tatsächlich übernommen; Auto-Fill mit
+  Party Level 15/Größe 4/High (Budget 31200) wählte bei 60% Boss-Ziel
+  ≈18720 den Adult Gold Dragon (18000 XP), bei zurückgesetzten 75%
+  (Ziel ≈23400) stattdessen den Balor (22000 XP) — nachweislich
+  unterschiedliches Verhalten je nach Setting. Default-HP-Mode auf
+  "Maxroll" und Default-Boss-Mode auf An gesetzt, App geschlossen und neu
+  geöffnet → beide Werte korrekt übernommen. Alle drei Settings danach
+  wieder auf ihre Standardwerte zurückgesetzt.

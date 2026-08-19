@@ -19,6 +19,9 @@
 
 const CANDIDATE_POOL_SIZE = 3; // how many near-matches to randomize among per slot
 
+/** Default fraction of the budget Boss Encounter mode reserves for the boss — GM-tunable via the "Boss-ify / Minion-ify Values" settings menu (bossBudgetSharePercent in main.js), this is just the shipped default the setting itself defaults to. */
+export const DEFAULT_BOSS_SHARE = 0.75;
+
 /** Filters candidates down to a usable pool: known XP, optional creature-type match. */
 function buildPool(candidates, creatureTypeFilter) {
   let pool = candidates.filter((m) => typeof m.xp === "number" && m.xp >= 0);
@@ -33,7 +36,7 @@ function buildPool(candidates, creatureTypeFilter) {
  * using the greedy-with-randomness approach described above. Shared by
  * both the plain and boss-mode auto-fill entry points.
  */
-function fillSlots(pool, budget, slotCount, rng) {
+export function fillSlots(pool, budget, slotCount, rng) {
   const repeatCap = Math.max(2, Math.ceil(slotCount / 2));
   const counts = new Map(); // uuid -> { monster, count }
   let remainingBudget = budget;
@@ -111,7 +114,7 @@ export function autoFillBossEncounter(
   desiredCount,
   candidates,
   creatureTypeFilter = null,
-  bossShare = 0.75,
+  bossShare = DEFAULT_BOSS_SHARE,
   rng = Math.random
 ) {
   const pool = buildPool(candidates, creatureTypeFilter);
@@ -148,6 +151,206 @@ export function autoFillBossEncounter(
     } else {
       const minionCounts = fillSlots(minionPool, Math.max(0, remainingBudget), remainingSlots, rng);
       entries.push(...minionCounts.values());
+    }
+  }
+
+  const totalSpent = entries.reduce((sum, e) => sum + e.monster.xp * e.count, 0);
+  if (!warning && totalSpent > budget * 1.15) {
+    warning = `Boss + adds overshoot the budget by more than 15% — the cheapest available "boss" candidate may just be too strong for this budget.`;
+  } else if (boss.xp > budget) {
+    warning = `No single monster fit within the full budget as a boss — used the cheapest option available (${boss.name}, ${boss.xp} XP), which alone exceeds the budget.`;
+  }
+
+  return {
+    entries,
+    totalSpent,
+    requestedCount: desiredCount,
+    actualCount: entries.reduce((sum, e) => sum + e.count, 0),
+    warning,
+    bossUuid: boss.uuid,
+  };
+}
+
+/** Adds one fillSlots() result's counts into an accumulator Map, summing counts for repeated uuids across groups instead of overwriting. */
+function mergeCounts(accumulator, groupCounts) {
+  for (const [uuid, entry] of groupCounts) {
+    const existing = accumulator.get(uuid);
+    if (existing) existing.count += entry.count;
+    else accumulator.set(uuid, { ...entry });
+  }
+}
+
+/**
+ * Encounter Composition — Auto-Fill with role constraints (see
+ * monster-roles.js for what Brute/Tank/Skirmisher/Cleric/Caster mean).
+ * `roleConstraints` reserves a fixed number of slots for monsters tagged
+ * with each given role (e.g. "2 Brute + 2 Skirmisher"); any remaining
+ * slots (desiredCount minus the sum of constraint counts) are filled
+ * unconstrained from the WHOLE pool, same as plain autoFillEncounter — a
+ * monster with no standout role can still fill an unconstrained slot, it's
+ * simply not eligible for a role-reserved one.
+ *
+ * Each group (each role constraint, then the final unconstrained group)
+ * gets a budget share proportional to its own slot count out of
+ * desiredCount, computed from the ORIGINAL total budget rather than
+ * whatever's left after earlier groups — keeps the per-creature target
+ * roughly budget/desiredCount for every group instead of later groups
+ * getting a skewed leftover share. Cross-group repeats (the same monster
+ * picked by two different groups) are allowed and summed, not deduped —
+ * matches how autoFillBossEncounter's boss+adds split already behaves,
+ * not a new inconsistency introduced here.
+ *
+ * If the constraint counts alone add up to MORE than desiredCount (e.g. "5
+ * Brute" with a Desired Count of 4), later constraints are trimmed to fit
+ * — actualCount never exceeds desiredCount — and a warning is returned
+ * explaining the trim, on top of whatever the UI itself may already warn
+ * about before calling this.
+ *
+ * @param {number} budget
+ * @param {number} desiredCount
+ * @param {object[]} candidates - monster index entries (.xp, .creatureType, .uuid, .name)
+ * @param {Map<string,string[]>} roleData - monster uuid -> role tags (see monster-role-data.js)
+ * @param {{role:string, count:number}[]} roleConstraints
+ * @param {string|null} creatureTypeFilter
+ * @param {() => number} rng
+ */
+export function autoFillEncounterWithRoles(
+  budget,
+  desiredCount,
+  candidates,
+  roleData,
+  roleConstraints,
+  creatureTypeFilter = null,
+  rng = Math.random
+) {
+  const pool = buildPool(candidates, creatureTypeFilter);
+  if (pool.length === 0) {
+    return { entries: [], totalSpent: 0, requestedCount: desiredCount, actualCount: 0,
+      warning: "No candidate monsters match the current filters (or none have a known XP value)." };
+  }
+
+  // If the constraints alone ask for more slots than desiredCount (e.g. "5
+  // Brute" with Desired Count 4 — the UI warns about this too, but this
+  // function stays correct standalone regardless of what the caller
+  // checked), trim them down to fit: keep constraints in the order given,
+  // capping the running total at desiredCount, so actualCount never
+  // exceeds what the GM asked for.
+  const requestedConstraints = roleConstraints.filter((c) => c.count > 0);
+  const requestedTotal = requestedConstraints.reduce((sum, c) => sum + c.count, 0);
+  let activeConstraints = requestedConstraints;
+  let wasTrimmed = false;
+  if (requestedTotal > desiredCount) {
+    wasTrimmed = true;
+    activeConstraints = [];
+    let running = 0;
+    for (const c of requestedConstraints) {
+      if (running >= desiredCount) break;
+      const allowed = Math.min(c.count, desiredCount - running);
+      activeConstraints.push({ role: c.role, count: allowed });
+      running += allowed;
+    }
+  }
+  const totalConstrained = activeConstraints.reduce((sum, c) => sum + c.count, 0);
+  const unconstrainedSlots = Math.max(0, desiredCount - totalConstrained);
+
+  const accumulator = new Map();
+  const unmatchedRoles = [];
+
+  for (const constraint of activeConstraints) {
+    const rolePool = pool.filter((m) => (roleData.get(m.uuid) ?? []).includes(constraint.role));
+    if (rolePool.length === 0) {
+      unmatchedRoles.push(constraint.role);
+      continue;
+    }
+    const groupBudget = (budget * constraint.count) / desiredCount;
+    mergeCounts(accumulator, fillSlots(rolePool, groupBudget, constraint.count, rng));
+  }
+
+  if (unconstrainedSlots > 0) {
+    const groupBudget = (budget * unconstrainedSlots) / desiredCount;
+    mergeCounts(accumulator, fillSlots(pool, groupBudget, unconstrainedSlots, rng));
+  }
+
+  const entries = [...accumulator.values()];
+  const totalSpent = entries.reduce((sum, e) => sum + e.monster.xp * e.count, 0);
+
+  let warning = null;
+  if (wasTrimmed) {
+    warning = `Role constraints requested ${requestedTotal} creature(s), more than the Desired Count of ${desiredCount} — later constraints were trimmed to fit.`;
+  }
+  if (unmatchedRoles.length > 0) {
+    const unmatchedMsg = `No monsters matching the current filters are tagged as: ${unmatchedRoles.join(", ")}. Those role slots were skipped — try Compute Roles with fewer other filters active, or a broader search.`;
+    warning = warning ? `${warning} ${unmatchedMsg}` : unmatchedMsg;
+  } else if (!warning && totalSpent > budget * 1.15) {
+    warning = `Best available fit for ${desiredCount} creature(s) overshoots the budget by more than 15% — consider allowing more creatures or loosening the filters.`;
+  }
+
+  return {
+    entries,
+    totalSpent,
+    requestedCount: desiredCount,
+    actualCount: entries.reduce((sum, e) => sum + e.count, 0),
+    warning,
+  };
+}
+
+/**
+ * Boss Encounter mode combined with role constraints — picks a boss
+ * exactly like autoFillBossEncounter (reserves bossShare of the budget,
+ * one slot out of desiredCount), then fills the REMAINING slots/budget
+ * for supporting "adds" using autoFillEncounterWithRoles instead of a
+ * plain unconstrained fillSlots() — so a GM can still say "2 Brute + 2
+ * Skirmisher" for the adds even with Boss Encounter checked. The boss
+ * itself is never role-constrained (it's picked purely by budget fit,
+ * same as plain Boss Encounter) and is excluded from the adds' candidate
+ * pool so it can't also get double-counted as one of its own supporting
+ * creatures.
+ *
+ * @param {number} budget
+ * @param {number} desiredCount - total creature count INCLUDING the boss (1 boss + desiredCount-1 adds)
+ * @param {object[]} candidates
+ * @param {Map<string,string[]>} roleData - see monster-role-data.js
+ * @param {{role:string, count:number}[]} roleConstraints - applies to the adds only, never the boss
+ * @param {string|null} creatureTypeFilter
+ * @param {number} bossShare
+ * @param {() => number} rng
+ */
+export function autoFillBossEncounterWithRoles(
+  budget,
+  desiredCount,
+  candidates,
+  roleData,
+  roleConstraints,
+  creatureTypeFilter = null,
+  bossShare = DEFAULT_BOSS_SHARE,
+  rng = Math.random
+) {
+  const pool = buildPool(candidates, creatureTypeFilter);
+  if (pool.length === 0) {
+    return { entries: [], totalSpent: 0, requestedCount: desiredCount, actualCount: 0,
+      warning: "No candidate monsters match the current filters (or none have a known XP value)." };
+  }
+
+  const effectiveBossShare = desiredCount <= 1 ? 1 : bossShare;
+  const bossTarget = budget * effectiveBossShare;
+  const withinBudget = pool.filter((m) => m.xp <= budget);
+  const bossPool = withinBudget.length > 0 ? withinBudget : pool;
+  const boss = [...bossPool].sort((a, b) => Math.abs(a.xp - bossTarget) - Math.abs(b.xp - bossTarget))[0];
+
+  const entries = [{ monster: boss, count: 1 }];
+  let warning = null;
+
+  const remainingSlots = desiredCount - 1;
+  const remainingBudget = Math.max(0, budget - boss.xp);
+
+  if (remainingSlots > 0) {
+    const addsPool = pool.filter((m) => m.uuid !== boss.uuid);
+    if (addsPool.length === 0) {
+      warning = "No other monsters available to fill the supporting-creature slots — only the boss was added.";
+    } else {
+      const addsResult = autoFillEncounterWithRoles(remainingBudget, remainingSlots, addsPool, roleData, roleConstraints, null, rng);
+      entries.push(...addsResult.entries);
+      warning = addsResult.warning;
     }
   }
 

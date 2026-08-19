@@ -8,6 +8,34 @@ import { xpForChallengeRating } from "./xp-budget.js";
  * flat collection), so no special-casing is needed for homebrew content.
  */
 
+/**
+ * Compendiums whose pre-built "Minion" stat blocks carry a lower true XP
+ * than their CR implies, computed by the source module's own hook when the
+ * Actor document is fully prepared — never present in stored/index data.
+ * Live-verified (2026-08) against MCDM Flee Mortals' Hobgoblin Brandbearer
+ * (CR 5, flags["mcdm-flee-mortals-where-evil-lives"].role === "minion"):
+ * `pack.getIndex()` returns an empty `xp` object for it, so the CR-fallback
+ * below would silently give 1800 XP instead of the actor's real 225 XP. A
+ * same-pack non-minion-role entry (Hobgoblin Firerunner, role "skirmisher")
+ * had its true XP match the CR-fallback exactly, confirming the divergence
+ * is specific to the "minion" role, not this compendium's data in general.
+ * Add more `{module, key, value}` entries here if another minion-flagging
+ * compendium turns up.
+ */
+const MINION_ROLE_FLAGS = [
+  { module: "mcdm-flee-mortals-where-evil-lives", key: "role", value: "minion" },
+];
+
+/** An index entry counts as a "monster" if it's an NPC with a defined CR. */
+function isMonsterEntry(entry) {
+  return entry.type === "npc" && entry.system?.details?.cr !== undefined && entry.system?.details?.cr !== null;
+}
+
+/** True if this index entry carries one of the known pre-built-Minion flags above. */
+function isFlaggedMinion(entry) {
+  return MINION_ROLE_FLAGS.some(({ module, key, value }) => entry.flags?.[module]?.[key] === value);
+}
+
 /** Fields we need from the index without loading full Actor documents. */
 const INDEX_FIELDS = [
   "type",
@@ -24,12 +52,8 @@ const INDEX_FIELDS = [
   // and is set per-encounter in the app UI instead (see #onToggleLair).
   "system.resources.lair.value",
   "img",
+  ...MINION_ROLE_FLAGS.map(({ module, key }) => `flags.${module}.${key}`),
 ];
-
-/** An index entry counts as a "monster" if it's an NPC with a defined CR. */
-function isMonsterEntry(entry) {
-  return entry.type === "npc" && entry.system?.details?.cr !== undefined && entry.system?.details?.cr !== null;
-}
 
 /**
  * Returns { groupKey, groupLabel } identifying which module/system/world
@@ -171,16 +195,31 @@ export async function loadMonsterIndex(collectionIds = null) {
     for (const entry of index) {
       if (!isMonsterEntry(entry)) continue;
 
+      // Prefer an explicit stored XP (e.g. homebrew override), fall back to
+      // the standard CR-derived value since the compendium index often
+      // doesn't expose Foundry's runtime-computed XP field. For a known
+      // pre-built Minion (see MINION_ROLE_FLAGS above), that CR-fallback is
+      // actively wrong — the actor's real XP is computed by the source
+      // module's own hook at Document-prepare time, so it's only fetchable
+      // via a full document load. Scoped to just this flagged minority so
+      // it doesn't cost a full-document load for every compendium entry.
+      let xp = entry.system?.details?.xp?.value ?? xpForChallengeRating(entry.system.details.cr);
+      if (isFlaggedMinion(entry)) {
+        try {
+          const trueXp = (await pack.getDocument(entry._id)).system?.details?.xp?.value;
+          if (Number.isFinite(trueXp)) xp = trueXp;
+        } catch (err) {
+          console.warn(`Encounter Builder | failed to resolve true XP for flagged minion "${entry.name}"`, err);
+        }
+      }
+
       monsters.push({
         uuid: `Compendium.${pack.collection}.${entry._id}`,
         id: entry._id,
         name: entry.name,
         img: entry.img,
         cr: entry.system.details.cr,
-        // Prefer an explicit stored XP (e.g. homebrew override), fall back
-        // to the standard CR-derived value since the compendium index
-        // often doesn't expose Foundry's runtime-computed XP field.
-        xp: entry.system?.details?.xp?.value ?? xpForChallengeRating(entry.system.details.cr),
+        xp,
         creatureType: entry.system?.details?.type?.value || "unknown",
         subtype: entry.system?.details?.type?.subtype || null,
         size: entry.system?.traits?.size || null,

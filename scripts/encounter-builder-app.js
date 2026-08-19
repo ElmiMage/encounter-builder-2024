@@ -2,7 +2,7 @@ import { computeBudget, evaluateSpend, xpForChallengeRating } from "./xp-budget.
 import { listMonsterCompendiums, loadMonsterIndex, loadFullActor, getAvailableCreatureTypes, getAvailableSubtypes, getAvailableSizes, getAvailableHabitats } from "./compendium-browser.js";
 import { groupPacksBySource } from "./pack-grouping.js";
 import { computeSpiralPositions, clampToSceneBounds } from "./token-placement.js";
-import { autoFillEncounter, autoFillBossEncounter } from "./auto-fill.js";
+import { autoFillEncounter, autoFillBossEncounter, autoFillEncounterWithRoles, autoFillBossEncounterWithRoles } from "./auto-fill.js";
 import { pickCanvasPoint } from "./canvas-picker.js";
 import { createLootActor, suggestLootPlan, suggestSmoothedLootPlan, rerollMagicItems, rerollSingleItem, listItemCompendiums, loadItemIndex, getAvailableRarities, RARITY_TIERS } from "./loot-generator.js";
 import { getAvailableCategories } from "./item-categories.js";
@@ -13,6 +13,8 @@ import { BOSSIFY_TIERS } from "./bossify-scaling.js";
 import { BossifyDialog } from "./bossify-dialog.js";
 import { ItemCustomizeDialog } from "./item-customize-dialog.js";
 import { resolveMinionXpMultiplier } from "./minion-scaling.js";
+import { computeMonsterRoles } from "./monster-role-data.js";
+import { ROLE_LABELS } from "./monster-roles.js";
 
 const { HandlebarsApplicationMixin, ApplicationV2 } = foundry.applications.api;
 
@@ -31,6 +33,9 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       syncParty: EncounterBuilderApp.#onSyncParty,
       toggleCompendium: EncounterBuilderApp.#onToggleCompendium,
       toggleCompendiumGroup: EncounterBuilderApp.#onToggleCompendiumGroup,
+      computeRoles: EncounterBuilderApp.#onComputeRoles,
+      addRoleConstraint: EncounterBuilderApp.#onAddRoleConstraint,
+      removeRoleConstraint: EncounterBuilderApp.#onRemoveRoleConstraint,
       addMonster: EncounterBuilderApp.#onAddMonster,
       viewMonster: EncounterBuilderApp.#onViewMonster,
       removeMonster: EncounterBuilderApp.#onRemoveMonster,
@@ -39,6 +44,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       toggleBoss: EncounterBuilderApp.#onToggleBoss,
       openBossifyDialog: EncounterBuilderApp.#onOpenBossifyDialog,
       revertBossify: EncounterBuilderApp.#onRevertBossify,
+      toggleElite: EncounterBuilderApp.#onToggleElite,
       toggleMinionify: EncounterBuilderApp.#onToggleMinionify,
       revertMinionify: EncounterBuilderApp.#onRevertMinionify,
       createCombat: EncounterBuilderApp.#onCreateCombat,
@@ -102,6 +108,36 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   bossMode = false;
   autoFillWarning = null;
 
+  // Encounter Composition: role tags (Brute/Tank/Skirmisher/Cleric/Caster,
+  // see monster-roles.js) computed lazily via #onComputeRoles, not on
+  // every render — gathering the raw stats behind them needs a full Actor
+  // document per monster (damage/spellcasting data isn't in the
+  // lightweight index), live-measured at roughly 40ms/monster, so doing it
+  // for the whole enabled compendium set unprompted could take a minute or
+  // more. roleData persists across re-renders/filter changes once
+  // computed; roleFilter falls back to "any" (no filtering) until the GM
+  // explicitly triggers a computation via the "Compute Roles" button.
+  roleFilter = "any";
+  /** @type {Map<string, string[]>} monster uuid -> role tags, filled in by #onComputeRoles */
+  roleData = new Map();
+  rolesComputing = false;
+  /** @type {{done:number, total:number}|null} */
+  roleComputeProgress = null;
+  // Auto-Fill role constraints: "2 Brute + 2 Skirmisher" reserves that many
+  // slots for monsters carrying that role tag; any remaining slots (out of
+  // desiredCount) fill unconstrained from the whole pool, same as plain
+  // Auto-Fill. A compact add-one-at-a-time builder (dropdown + count +
+  // "Add", producing removable chips) instead of five permanently-visible
+  // fields — most GMs only ever set 0-2 constraints, so five full rows was
+  // mostly empty space (user feedback). Also work in Boss Mode (user
+  // feedback: the boss reserves one slot for itself, never role-constrained
+  // — see #roleConstraintMaxFor/autoFillBossEncounterWithRoles — and the
+  // remaining slots are still constrainable, same as the non-boss path).
+  /** @type {{role:string, count:number}[]} */
+  roleConstraints = [];
+  roleConstraintDraftRole = "brute";
+  roleConstraintDraftCount = 1;
+
   // Persists <details> open/closed state across re-renders — a full
   // render replaces the DOM from scratch, which would otherwise reset
   // every collapsible section back to closed on every single click.
@@ -149,6 +185,11 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       // value is excluded from the dropdown itself.
       habitat: () =>
         this.habitatFilter === "any" || m.habitats.includes(this.habitatFilter) || m.habitats.includes("any"),
+      // Before #onComputeRoles has run, roleData is empty and every
+      // monster fails a non-"any" role filter — intentional: showing zero
+      // results (rather than silently ignoring the filter) is the honest
+      // signal that roles haven't been computed for this monster yet.
+      role: () => this.roleFilter === "any" || (this.roleData.get(m.uuid) ?? []).includes(this.roleFilter),
     };
     return Object.entries(checks).every(([key, fn]) => key === excludeKey || fn());
   }
@@ -331,6 +372,8 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       if (game.settings.get("encounter-builder-2024", "defaultLootBasis") === "partyLevel") {
         this.hoardLootBasis = String(this.partyLevel);
       }
+      this.encounterHpMode = game.settings.get("encounter-builder-2024", "defaultEncounterHpMode");
+      this.bossMode = game.settings.get("encounter-builder-2024", "defaultBossMode");
     }
     if (this.compendiums.length === 0) {
       const disabled = new Set(game.settings.get("encounter-builder-2024", "disabledMonsterCompendiums"));
@@ -420,6 +463,28 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       availableSubtypes,
       habitatFilter: this.habitatFilter,
       availableHabitats,
+      roleFilter: this.roleFilter,
+      availableRoles: Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label })),
+      rolesComputing: this.rolesComputing,
+      roleComputeProgress: this.roleComputeProgress,
+      roleConstraints: this.roleConstraints.map((c) => ({ ...c, label: ROLE_LABELS[c.role] })),
+      roleConstraintDraftRole: this.roleConstraintDraftRole,
+      roleConstraintDraftCount: this.roleConstraintDraftCount,
+      // How many slots are still available for the CURRENTLY drafted role:
+      // Count minus whatever's already reserved by every OTHER constraint
+      // (picking a role that already has a constraint replaces its count
+      // rather than adding a second one — see #onAddRoleConstraint — so
+      // that role's own existing count doesn't count against itself here).
+      // Drives the count dropdown's option range below, so it's simply
+      // impossible to build a Role-constraint set that overflows Count in
+      // the first place, rather than warning about it after the fact.
+      roleConstraintDraftCountOptions: Array.from(
+        { length: this.#roleConstraintMaxFor(this.roleConstraintDraftRole) },
+        (_, i) => i + 1
+      ),
+      roleConstraintOverflow:
+        this.roleConstraints.reduce((sum, c) => sum + c.count, 0) >
+        (this.bossMode ? Math.max(0, this.desiredCount - 1) : this.desiredCount),
       bossMode: this.bossMode,
       autoFillWarning: this.autoFillWarning,
       compendiums: this.compendiums,
@@ -434,20 +499,29 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         // Find the world Actor already spawned from this compendium monster
         // (if Create Combat has been run before) so the template can show a
         // Revert button once it carries the matching snapshot flag. Scoped
-        // to the entry's current isBoss/minionify status — the reuse-lookup
-        // in #onCreateCombat already refuses to hand a stray boss-ified or
-        // minion-ified Actor to an entry that isn't currently configured
-        // that way (always creates a fresh one instead), so an entry that
-        // isn't currently marked never needs reverting.
+        // to the entry's current isBoss/isElite/minionify status — the
+        // reuse-lookup in #onCreateCombat already refuses to hand a stray
+        // boss-ified or minion-ified Actor to an entry that isn't currently
+        // configured that way (always creates a fresh one instead), so an
+        // entry that isn't currently marked never needs reverting. Elite
+        // shares the same bossifySnapshot flag as Boss (it's the same
+        // scaling engine at a fixed tier), so it's grouped with isBoss here.
         const worldActor =
-          e.isBoss || e.minionify
+          e.isBoss || e.isElite || e.minionify
             ? game.actors.find((a) => a.getFlag("encounter-builder-2024", "sourceUuid") === e.monster.uuid)
             : null;
         return {
           ...e,
           effectiveXp: this.#getEffectiveXp(e),
-          bossifiedActorId: e.isBoss && worldActor?.getFlag("encounter-builder-2024", "bossifySnapshot") ? worldActor.id : null,
+          bossifiedActorId:
+            (e.isBoss || e.isElite) && worldActor?.getFlag("encounter-builder-2024", "bossifySnapshot") ? worldActor.id : null,
           minionifiedActorId: e.minionify && worldActor?.getFlag("encounter-builder-2024", "minionifySnapshot") ? worldActor.id : null,
+          // Whatever roles this monster is currently tagged with (empty if
+          // roles were never computed for it, e.g. it was added manually
+          // and Auto-Fill/Compute Roles never ran against its filters) —
+          // purely informational here, no fallback fetch triggered just
+          // from having it in the encounter list.
+          roleLabels: (this.roleData.get(e.monster.uuid) ?? []).map((role) => ROLE_LABELS[role]),
         };
       }),
       budget,
@@ -610,10 +684,15 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     });
     this.element.querySelector('[name="desiredCount"]')?.addEventListener("change", (ev) => {
       this.desiredCount = Number(ev.target.value) || 1;
+      this.#clampRoleConstraintDraftCount();
       this.render();
     });
     this.element.querySelector('[name="bossMode"]')?.addEventListener("change", (ev) => {
       this.bossMode = ev.target.checked;
+      // Toggling Boss Mode changes how many Count slots are actually
+      // available for role constraints (one goes to the boss) — re-clamp
+      // so the draft count select never points at a now-invalid option.
+      this.#clampRoleConstraintDraftCount();
       this.render();
     });
     this.element.querySelector('[name="creatureTypeFilter"]')?.addEventListener("change", (ev) => {
@@ -635,6 +714,21 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     this.element.querySelector('[name="habitatFilter"]')?.addEventListener("change", (ev) => {
       this.habitatFilter = ev.target.value;
       this.render();
+    });
+    this.element.querySelector('[name="roleFilter"]')?.addEventListener("change", (ev) => {
+      this.roleFilter = ev.target.value;
+      this.render();
+    });
+    this.element.querySelector('[name="roleConstraintDraftRole"]')?.addEventListener("change", (ev) => {
+      this.roleConstraintDraftRole = ev.target.value;
+      // A different role can have a different existing constraint (or
+      // none), which changes how many slots are still available — re-render
+      // so the count dropdown's own option list reflects the new role.
+      this.#clampRoleConstraintDraftCount();
+      this.render();
+    });
+    this.element.querySelector('[name="roleConstraintDraftCount"]')?.addEventListener("change", (ev) => {
+      this.roleConstraintDraftCount = Math.max(1, Number(ev.target.value) || 1);
     });
 
     this.element.querySelector('[name="encounterHpMode"]')?.addEventListener("change", (ev) => {
@@ -742,22 +836,31 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
           <p><strong>Party Level / Party Size / Difficulty</strong> set how much total XP this encounter is allowed to spend. <strong>Sync from Party</strong> fills Level and Size in automatically from your world's Party.</p>
 
           <h3>Building the Encounter</h3>
-          <p>Pick which compendiums to draw from, filter the monster list, and click <strong>+</strong> to add monsters — or use <strong>Auto-Fill Remaining</strong> to fill the rest of the budget automatically with matching monsters.</p>
+          <p>Pick which compendiums to draw from, filter the monster list, and click <strong>+</strong> to add monsters (click a monster's name instead to preview its stat block first) — or use <strong>Auto-Fill Remaining</strong> to fill the rest of the budget automatically with matching monsters. You can also drag a monster's name straight onto the map to place a single plain token immediately, without going through the list below.</p>
           <p><strong>Boss Encounter</strong>: when checked, Auto-Fill spends most of the budget on one strong "boss" creature and the rest on a few supporting monsters, instead of spreading it evenly.</p>
           <p><strong>Boss</strong> (button on an entry): marks that monster as the boss, whether Auto-Fill picked it or you added it yourself. Only one monster can be the boss at a time.</p>
           <p><strong>Boss-ify…</strong>: opens a dialog to make the boss tougher. Pick RAW (no change), Moderate, High, or Deadly — this scales the boss's HP and damage up (with a small boost to AC and ability scores too), so a single boss can actually threaten a whole party.</p>
+          <p><strong>Elite</strong> (button on an entry): a quicker alternative to Boss-ify — scales that monster up at a fixed "Moderate" difficulty with one click, no dialog. Unlike Boss, any number of monsters can be Elite at the same time. A monster can only be Boss, Elite, or Minion at once, never two together.</p>
           <p><strong>Minion</strong>: turns a monster into a fragile "minion" with fixed low HP and fixed damage (no rolling) — great for fast, disposable group fights. Costs much less of the XP budget, so a crowd of them is affordable.</p>
           <p><strong>Lair</strong>: marks a monster as fighting in its own lair, correctly increasing its XP cost per the 2024 rules (only shown for monsters that actually have lair actions).</p>
           <p><strong>Encounter HP</strong>: choose how every monster's HP is set when placed — RAW (as printed), Minroll (always the lowest possible roll), or Maxroll (always the highest possible roll).</p>
           <p><strong>Deploy Encounter</strong>: places tokens on the map and starts a Combat with everything currently in the list.</p>
-          <p><strong>Revert</strong> (shows up once Boss-ify/Minion-ify has been applied): restores that specific monster's original stats.</p>
+          <p><strong>Revert</strong> (shows up once Boss-ify/Elite/Minion-ify has been applied): restores that specific monster's original stats.</p>
           <p><strong>Save As… / Load / Delete</strong> (below "Encounter"): save the current monster list, party config, and any already-rolled Treasure Hoard as a named preset — visible to every GM in this world, so a prepared encounter can be pulled back up in a later session.</p>
+
+          <h3>Encounter Composition</h3>
+          <p><strong>Compute Roles</strong>: classifies the currently filtered monster list into <strong>Brute</strong> (high HP), <strong>Tank</strong> (high AC), <strong>Skirmisher</strong> (hits hard relative to its own HP), <strong>Cleric</strong> (Wisdom-based spellcasting), or <strong>Caster</strong> (Intelligence/Charisma-based spellcasting) — a homebrew heuristic comparing each monster to others of the same CR, not from any book. Narrow the list first (CR/Type/etc.) to keep this fast; results stay cached for the rest of the session, and a monster's role badge shows up next to it in the Encounter list once known.</p>
+          <p><strong>Any Role</strong> filter: once roles are computed, narrows the monster list to just one role, alongside the other search filters.</p>
+          <p><strong>Roles</strong> builder (next to Auto-Fill): reserve a number of Auto-Fill slots for a specific role — pick a role and a count, click <strong>+</strong> to add it as a chip, click a chip's × to remove it. The count dropdown only ever offers what's actually still available out of Count. Works together with Boss Encounter too: the boss always takes one slot for itself and is never role-constrained, only the remaining supporting monsters are. Roles are computed automatically if needed when you click Auto-Fill, so there's no need to click Compute Roles first.</p>
 
           <h3>Individual Treasure</h3>
           <p>Rolls <strong>Individual Treasure</strong> — the coins and small items each creature in the encounter is carrying.</p>
 
           <h3>Treasure Hoard</h3>
           <p>Rolls a full treasure hoard (coins, gems/art, and magic items) appropriate for the party's level or a chosen CR.</p>
+
+          <h3>Item Customize</h3>
+          <p><strong>Customize…</strong> (on a weapon or armor entry, rolled or manually added, in either loot tab): turns a generic item into this encounter's specific magic find before it's placed — a custom name and description, a flat magic bonus, up to two extra damage or resistance types, a Requires Attunement toggle, and an auto-suggested (but overridable) rarity. Homebrew, not an official DMG magic item generator.</p>
         </div>
       `,
       rejectClose: false,
@@ -806,6 +909,112 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       return;
     }
     monster.sheet.render(true);
+  }
+
+  /**
+   * Lazily computes role tags (Brute/Tank/Skirmisher/Cleric/Caster) for
+   * every monster matching the currently-active dropdown/search filters
+   * (deliberately excluding the role filter itself, same as
+   * #getMonstersExcluding elsewhere) — NOT the whole enabled compendium
+   * set, since that's the expensive part (a full Actor document load per
+   * monster, live-measured ~40ms each; narrowing to CR/type/etc. first
+   * keeps this fast in the common case). Results are cached in roleData
+   * for the rest of the session (see computeMonsterRoles in
+   * monster-role-data.js) — repeat clicks only fetch monsters not already
+   * cached, so switching CR filters and re-running this is cheap after
+   * the first pass.
+   */
+  /**
+   * Ensures every monster in `scope` has an entry in roleData, fetching
+   * only whatever's actually missing (computeMonsterRoles's own cache
+   * already skips uuids it has raw stats for). Shared by #onComputeRoles
+   * (the explicit button) and #onAutoFill (implicit, whenever role
+   * constraints are active) — a monster the GM filtered to `AFTER` the
+   * last "Compute Roles" click (e.g. switching Creature Type to Undead
+   * after only ever computing roles for a different CR/type combination)
+   * would otherwise have NO role data at all, which silently looks
+   * identical to "computed, but doesn't qualify for any role" to
+   * autoFillEncounterWithRoles — every role constraint would then fail to
+   * match anything in that filtered pool, with a warning that doesn't
+   * make it obvious this was a stale-scope problem rather than "none of
+   * these monsters are actually Brutes". Calling this from Auto-Fill too
+   * removes the need to get that button-click timing right at all.
+   */
+  static async #ensureRolesComputed(scope) {
+    if (this.rolesComputing) return;
+    this.rolesComputing = true;
+    this.roleComputeProgress = { done: 0, total: 0 };
+    this.render();
+
+    try {
+      const roles = await computeMonsterRoles(scope, {
+        onProgress: (done, total) => {
+          this.roleComputeProgress = { done, total };
+          // Re-rendering on every single document load would be excessive
+          // for a scope of hundreds of monsters — throttle to every 10th.
+          if (done % 10 === 0 || done === total) this.render();
+        },
+      });
+      for (const [uuid, tags] of roles) this.roleData.set(uuid, tags);
+    } catch (err) {
+      console.warn("Encounter Builder | role computation failed", err);
+      ui.notifications.warn("Computing monster roles failed partway through — see console for details.");
+    }
+
+    this.rolesComputing = false;
+    this.roleComputeProgress = null;
+    this.render();
+  }
+
+  static async #onComputeRoles(event, target) {
+    await EncounterBuilderApp.#ensureRolesComputed.call(this, this.#getMonstersExcluding("role"));
+  }
+
+  /**
+   * Slots still available for `role` given every OTHER active role
+   * constraint (a role that already has a constraint gets replaced, not
+   * added to, when re-added — see #onAddRoleConstraint — so its own
+   * existing count doesn't count against itself here). Same calculation
+   * as roleConstraintDraftCountOptions in _prepareContext, duplicated here
+   * because #onAddRoleConstraint needs the true current max without
+   * waiting for a fresh render.
+   */
+  #roleConstraintMaxFor(role) {
+    // In Boss Mode, one of Count's slots always goes to the boss itself
+    // (never role-constrained — see autoFillBossEncounterWithRoles), so
+    // only the rest is actually available to reserve for the adds.
+    const availableSlots = this.bossMode ? Math.max(0, this.desiredCount - 1) : this.desiredCount;
+    const otherTotal = this.roleConstraints
+      .filter((c) => c.role !== role)
+      .reduce((sum, c) => sum + c.count, 0);
+    return Math.max(0, availableSlots - otherTotal);
+  }
+
+  /** Keeps roleConstraintDraftCount in range whenever something that affects the max changes (Count, the drafted role, or the constraint list itself) — a no-op if the max is 0, since there's no valid option to clamp to (the template disables Add entirely in that case). */
+  #clampRoleConstraintDraftCount() {
+    const max = this.#roleConstraintMaxFor(this.roleConstraintDraftRole);
+    if (max <= 0) return;
+    this.roleConstraintDraftCount = Math.max(1, Math.min(this.roleConstraintDraftCount, max));
+  }
+
+  /** Adds (or updates the count of) one role constraint for Auto-Fill, from the draft role/count fields next to the "+ Add" button. Setting a role that's already in the list replaces its count rather than adding a second chip for the same role. Clamped against the true current max (not just whatever the dropdown happened to show) so this can never push the total past Count, even if the draft state was somehow stale. */
+  static #onAddRoleConstraint(event, target) {
+    const role = this.roleConstraintDraftRole;
+    const max = this.#roleConstraintMaxFor(role);
+    if (max <= 0) return;
+    const count = Math.max(1, Math.min(Number(this.roleConstraintDraftCount) || 1, max));
+    const existing = this.roleConstraints.find((c) => c.role === role);
+    if (existing) existing.count = count;
+    else this.roleConstraints.push({ role, count });
+    this.#clampRoleConstraintDraftCount();
+    this.render();
+  }
+
+  /** Removes one role constraint chip. */
+  static #onRemoveRoleConstraint(event, target) {
+    const role = target.dataset.role;
+    this.roleConstraints = this.roleConstraints.filter((c) => c.role !== role);
+    this.render();
   }
 
   static #onAddMonster(event, target) {
@@ -868,9 +1077,10 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
    * so a manually-added monster can become the boss too. Only one entry can
    * be the boss at a time: marking a new one un-marks whichever entry had
    * it before (and clears that entry's Boss-ify tier too, see
-   * #clearBossifyExcept). Boss and Minion are mutually exclusive on the
-   * SAME entry too — becoming the boss clears that entry's minionify flag
-   * (see #onToggleMinionify for the reverse direction).
+   * #clearBossifyExcept). Boss, Elite, and Minion are all mutually
+   * exclusive on the SAME entry — becoming the boss clears that entry's
+   * minionify and isElite flags (see #onToggleMinionify/#onToggleElite for
+   * the other two directions).
    */
   static #onToggleBoss(event, target) {
     const entry = this.encounter.get(target.dataset.uuid);
@@ -881,7 +1091,33 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
     entry.isBoss = makingBoss;
     if (!makingBoss) entry.bossifyTier = null;
-    else entry.minionify = false; // Boss and Minion are mutually exclusive
+    else {
+      entry.minionify = false; // Boss/Elite/Minion are mutually exclusive
+      entry.isElite = false;
+    }
+    this.render();
+  }
+
+  /**
+   * Marks/unmarks an encounter entry as Elite — unlike Boss, not exclusive
+   * ACROSS entries: any number of entries can be Elite at once (there's no
+   * "only one encounter boss"-style narrative constraint here, just a
+   * flat difficulty bump). Reuses the exact same scaling engine as Boss-ify
+   * at a fixed "moderate" tier (see BOSSIFY_TIERS in bossify-scaling.js —
+   * literally the midpoint between raw and high) instead of introducing a
+   * second, separately-configured tier system: no dialog, no per-monster
+   * tuning, just a toggle. Mutually exclusive with Boss and Minion on the
+   * SAME entry, same pattern as those two already use with each other.
+   */
+  static #onToggleElite(event, target) {
+    const entry = this.encounter.get(target.dataset.uuid);
+    if (!entry) return;
+    entry.isElite = !entry.isElite;
+    if (entry.isElite) {
+      entry.isBoss = false;
+      entry.bossifyTier = null;
+      entry.minionify = false;
+    }
     this.render();
   }
 
@@ -900,16 +1136,17 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     this.render();
   }
 
-  /** Marks/unmarks an encounter entry for Minion-ify — unlike Boss, not exclusive ACROSS entries: any number of entries can be minions at once. It IS mutually exclusive with Boss status on the SAME entry though — a monster can't be both, so marking it a minion steps it down from boss if it currently is one. Applied at Create Combat, like Boss-ify. */
+  /** Marks/unmarks an encounter entry for Minion-ify — unlike Boss, not exclusive ACROSS entries: any number of entries can be minions at once. It IS mutually exclusive with Boss and Elite status on the SAME entry though — a monster can't be both, so marking it a minion steps it down from boss/elite if it currently is one. Applied at Create Combat, like Boss-ify. */
   static #onToggleMinionify(event, target) {
     const entry = this.encounter.get(target.dataset.uuid);
     if (!entry) return;
     entry.minionify = !entry.minionify;
-    if (entry.minionify && entry.isBoss) {
-      // Boss and Minion are mutually exclusive — becoming a minion steps
-      // this entry down from boss status.
+    if (entry.minionify && (entry.isBoss || entry.isElite)) {
+      // Boss/Elite and Minion are mutually exclusive — becoming a minion
+      // steps this entry down from boss/elite status.
       entry.isBoss = false;
       entry.bossifyTier = null;
+      entry.isElite = false;
     }
     this.render();
   }
@@ -933,7 +1170,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
    * habitat) — so what the GM sees filtered on screen is exactly what
    * Auto-Fill is allowed to pick from, not the whole enabled compendium set.
    */
-  static #onAutoFill(event, target) {
+  static async #onAutoFill(event, target) {
     const budget = computeBudget(this.partyLevel, this.partySize, this.difficulty);
     const currentEntries = [...this.encounter.values()];
     const alreadySpent = currentEntries.reduce((sum, e) => sum + (e.monster.xp ?? 0) * e.count, 0);
@@ -948,9 +1185,37 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
     const pool = this.#getFilteredMonsters();
 
+    // Role constraints work in Boss Mode too — they just never apply to
+    // the boss itself (picked purely by budget fit, same as plain Boss
+    // Encounter); one Count slot always goes to the boss, and constraints
+    // reserve from what's left for the supporting adds (see
+    // #roleConstraintMaxFor and autoFillBossEncounterWithRoles). Whether
+    // the constraint counts sum to more than the adds' available slots is
+    // handled inside autoFillEncounterWithRoles/autoFillBossEncounterWithRoles
+    // themselves (trims + warns) — not re-checked here, so this always
+    // reflects the actual result even if the UI's own roleConstraintOverflow
+    // warning was somehow stale.
+    const roleConstraints = this.roleConstraints.filter((c) => c.count > 0);
+
+    // Make sure roleData actually covers THIS pool before relying on it —
+    // see #ensureRolesComputed for why (switching filters after the last
+    // "Compute Roles" click would otherwise silently starve every
+    // constraint of candidates it never even looked at).
+    if (roleConstraints.length > 0) {
+      await EncounterBuilderApp.#ensureRolesComputed.call(this, pool);
+    }
+
+    // GM-tunable via the "Boss-ify / Minion-ify Values" settings menu
+    // (bossBudgetSharePercent) — defaults to DEFAULT_BOSS_SHARE (75%).
+    const bossShare = game.settings.get("encounter-builder-2024", "bossBudgetSharePercent") / 100;
+
     const result = this.bossMode
-      ? autoFillBossEncounter(budget - alreadySpent, remainingSlots, pool, null)
-      : autoFillEncounter(budget - alreadySpent, remainingSlots, pool, null);
+      ? roleConstraints.length > 0
+        ? autoFillBossEncounterWithRoles(budget - alreadySpent, remainingSlots, pool, this.roleData, roleConstraints, null, bossShare)
+        : autoFillBossEncounter(budget - alreadySpent, remainingSlots, pool, null, bossShare)
+      : roleConstraints.length > 0
+        ? autoFillEncounterWithRoles(budget - alreadySpent, remainingSlots, pool, this.roleData, roleConstraints, null)
+        : autoFillEncounter(budget - alreadySpent, remainingSlots, pool, null);
     for (const entry of result.entries) {
       if (result.bossUuid && entry.monster.uuid === result.bossUuid) {
         entry.isBoss = true;
@@ -1038,6 +1303,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         inLair: e.inLair,
         isBoss: e.isBoss,
         bossifyTier: e.bossifyTier ?? null,
+        isElite: e.isElite,
         minionify: e.minionify,
         applyAC: e.applyAC,
         applyHP: e.applyHP,
@@ -1105,6 +1371,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         inLair: entry.inLair,
         isBoss: entry.isBoss,
         bossifyTier: entry.bossifyTier,
+        isElite: entry.isElite,
         minionify: entry.minionify,
         applyAC: entry.applyAC,
         applyHP: entry.applyHP,
@@ -1201,15 +1468,16 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     try { await this.maximize?.(); } catch (err) { console.warn("Encounter Builder | maximize failed", err); }
 
     // Flatten { monster, count } into one entry per individual creature, so
-    // the spiral positions map 1:1 onto tokens. Carries isBoss/bossifyTier,
-    // minionify, and the apply* checkboxes along too, since they're needed
-    // once actors are actually spawned below.
+    // the spiral positions map 1:1 onto tokens. Carries isBoss/bossifyTier/
+    // isElite, minionify, and the apply* checkboxes along too, since
+    // they're needed once actors are actually spawned below.
     const spawnList = [...this.encounter.values()].flatMap(
-      ({ monster, count, isBoss, bossifyTier, minionify, applyAC, applyHP, applyAbilities, applyDamageDice }) =>
+      ({ monster, count, isBoss, bossifyTier, isElite, minionify, applyAC, applyHP, applyAbilities, applyDamageDice }) =>
         Array(count).fill({
           monster,
           isBoss: Boolean(isBoss),
           bossifyTier: bossifyTier ?? null,
+          isElite: Boolean(isElite),
           minionify: Boolean(minionify),
           applyAC,
           applyHP,
@@ -1245,11 +1513,34 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     };
 
     for (let i = 0; i < spawnList.length; i++) {
-      const { monster, isBoss, bossifyTier, minionify, applyAC, applyHP, applyAbilities, applyDamageDice } =
+      const { monster, isBoss, bossifyTier, isElite, minionify, applyAC, applyHP, applyAbilities, applyDamageDice } =
         spawnList[i];
-      const shouldBossify = isBoss && bossifyTier !== null;
+      // Elite reuses the exact same scaling engine as Boss-ify, fixed at
+      // the "moderate" tier (see #onToggleElite) — effectiveTier/
+      // effectiveApply* below let the rest of this loop treat Boss and
+      // Elite identically without duplicating the Actor-creation/reuse
+      // logic. The apply* flags default to true here (matching
+      // bossifyActor's own defaults) because Elite entries never go
+      // through the Boss-ify Dialog that normally sets them — leaving
+      // them `undefined` would make the reuse-lookup below never match a
+      // previously-created Elite Actor (undefined !== the stored `true`).
+      const shouldBossify = isElite || (isBoss && bossifyTier !== null);
+      const effectiveTier = isElite ? "moderate" : bossifyTier;
+      const effectiveApplyAC = applyAC ?? true;
+      const effectiveApplyHP = applyHP ?? true;
+      const effectiveApplyAbilities = applyAbilities ?? true;
+      const effectiveApplyDamageDice = applyDamageDice ?? true;
       const shouldMinionify = minionify;
-      const variantKey = variantKeyFor(monster, shouldBossify, bossifyTier, shouldMinionify, applyAC, applyHP, applyAbilities, applyDamageDice);
+      const variantKey = variantKeyFor(
+        monster,
+        shouldBossify,
+        effectiveTier,
+        shouldMinionify,
+        effectiveApplyAC,
+        effectiveApplyHP,
+        effectiveApplyAbilities,
+        effectiveApplyDamageDice
+      );
 
       // Plain (non-Boss/Minion) entries keep the original lookup: any world
       // Actor imported from this same compendium monster, as long as it
@@ -1269,11 +1560,11 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
             if (shouldBossify) {
               const snap = a.getFlag("encounter-builder-2024", "bossifySnapshot");
               return (
-                snap?.tier === bossifyTier &&
-                snap?.applyAC === applyAC &&
-                snap?.applyHP === applyHP &&
-                snap?.applyAbilities === applyAbilities &&
-                snap?.applyDamageDice === applyDamageDice
+                snap?.tier === effectiveTier &&
+                snap?.applyAC === effectiveApplyAC &&
+                snap?.applyHP === effectiveApplyHP &&
+                snap?.applyAbilities === effectiveApplyAbilities &&
+                snap?.applyDamageDice === effectiveApplyDamageDice
               );
             }
             return Boolean(a.getFlag("encounter-builder-2024", "minionifySnapshot"));
@@ -1303,11 +1594,19 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
         if (shouldBossify) {
           try {
-            await bossifyActor(worldActor, bossifyTier, { applyAC, applyHP, applyAbilities, applyDamageDice });
+            await bossifyActor(worldActor, effectiveTier, {
+              applyAC: effectiveApplyAC,
+              applyHP: effectiveApplyHP,
+              applyAbilities: effectiveApplyAbilities,
+              applyDamageDice: effectiveApplyDamageDice,
+            });
             // Disambiguates this Actor from the plain version and from
             // other tiers in the "Encounter Builder" folder — tokens
-            // themselves keep the plain monster.name (set below).
-            await worldActor.update({ name: `${worldActor.name} (${BOSSIFY_TIERS[bossifyTier]?.label ?? bossifyTier})` });
+            // themselves keep the plain monster.name (set below). Elite
+            // and a manually-chosen Boss-ify "Moderate" tier are
+            // mechanically identical (same fixed tier), so they
+            // intentionally share this same "(Moderate)" name/Actor.
+            await worldActor.update({ name: `${worldActor.name} (${BOSSIFY_TIERS[effectiveTier]?.label ?? effectiveTier})` });
           } catch (err) {
             // bossifyActor already reports failures to the user itself —
             // don't abort the rest of the encounter over one boss-ify error.
