@@ -241,7 +241,7 @@
                   <button type="button" data-action="revertBossify" data-actor-id="{{this.bossifiedActorId}}" title="Restore this boss's original stats">Revert</button>
                 {{/if}}
               {{/if}}
-              <button type="button" class="eb-toggle-pill {{#if this.isElite}}active{{/if}}" data-action="toggleElite" data-uuid="{{this.monster.uuid}}" title="Scale this monster up at the fixed Moderate Boss-ify tier (130% HP/damage, +1 AC, +2 to ability scores) — no per-monster tuning, any number of entries can be Elite at once">Elite</button>
+              <button type="button" class="eb-toggle-pill {{#if this.isElite}}active{{/if}}" data-action="toggleElite" data-uuid="{{this.monster.uuid}}" title="{{../eliteTooltip}}">Elite</button>
               {{#if this.isElite}}
                 {{#if this.bossifiedActorId}}
                   <button type="button" data-action="revertBossify" data-actor-id="{{this.bossifiedActorId}}" title="Restore this monster's original stats">Revert</button>

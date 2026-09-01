@@ -1256,3 +1256,62 @@
   "Maxroll" und Default-Boss-Mode auf An gesetzt, App geschlossen und neu
   geöffnet → beide Werte korrekt übernommen. Alle drei Settings danach
   wieder auf ihre Standardwerte zurückgesetzt.
+- Bugfix: XP-Berechnung für Elite/Lair/Minion inkonsistent (seit 2026-09,
+  auf Nutzerwunsch/Bugreport): `#getEffectiveXp(entry)` (encounter-builder-
+  app.js) — die zentrale Stelle, die Minion-Rabatt und Lair-Aufschlag in
+  die Budget-Anzeige einrechnet — berücksichtigte `isElite` bisher gar
+  nicht und wurde in `#onAutoFill` an einer Stelle umgangen. Drei Fixes:
+  1. **Elite jetzt in `#getEffectiveXp()`**: ein Elite-markierter Eintrag
+     bekommt jetzt denselben XP-Multiplikator wie die tatsächliche
+     Stat-Skalierung selbst — `mergeTierConfig(...).moderate.percent`
+     (bossifyTierConfig-Setting, Default 130%), NICHT ein zweiter,
+     separat konfigurierbarer Wert (exakt die im Auftrag geforderte
+     Vermeidung eines doppelten Konfigurationsorts). **Elite+Lair-
+     Kombination**: bewusst multiplikativ verknüpft (Lair-adjustierte XP
+     zuerst berechnet, danach mit dem Elite-Prozentsatz skaliert) statt
+     dass eines das andere wie bei Minion überschreibt — Begründung: ein
+     lair-kämpfendes Elite-Monster ist real stärker als jeder Bonus für
+     sich allein, während der Minion-Kurzschluss (Minion ignoriert Lair
+     komplett) dort weiterhin Sinn ergibt, weil ein auf 1 HP
+     minionifiziertes Monster keine sinnvolle "kämpft in seinem Lager"-
+     Aufwertung mehr hat. In der Praxis kommt die Minion/Lair-Kollision
+     aber sowieso nie vor, da Minion und Elite auf demselben Eintrag
+     bereits gegenseitig exklusiv sind (`#onToggleMinionify`/
+     `#onToggleElite`) — die Minion-Abkürzung in `#getEffectiveXp()`
+     greift also nur noch gegen Lair, nie gegen Elite.
+  2. **`#onAutoFill` nutzte rohes `monster.xp`**: die
+     `alreadySpent`-Berechnung summierte bisher `(e.monster.xp ?? 0) *
+     e.count` und ignorierte damit Minion/Lair/Elite bereits vorhandener
+     Einträge beim Ermitteln des für "Auto-Fill Remaining" noch
+     verfügbaren Budgets — jetzt `#getEffectiveXp(e) * e.count`, wie an
+     der einzigen anderen XP-Summierungsstelle in derselben Datei
+     (`selectedXp` in `_prepareContext()`).
+  3. **`auto-fill.js` geprüft, nicht verändert**: alle `.xp`-Summierungen
+     dort (`fillSlots`/`autoFillEncounter`/`autoFillBossEncounter`/
+     `autoFillEncounterWithRoles`/`autoFillBossEncounterWithRoles`)
+     rechnen ausschließlich mit frisch aus dem Compendium-Pool gezogenen
+     Kandidaten — keine dieser Funktionen nimmt bestehende
+     Encounter-Einträge (mit ihren minionify/inLair/isElite-Flags)
+     überhaupt entgegen, der Verdacht aus dem Auftrag war also korrekt:
+     dort war nichts zu fixen.
+  4. **Elite-Tooltip hart codiert**: `templates/encounter-builder.hbs`
+     zeigte fest "130% HP/damage, +1 AC, +2 to ability scores", obwohl
+     das über Settings → Scaling-Settings pro GM änderbar ist. Fix:
+     `_prepareContext()` baut jetzt `eliteTooltip` als fertigen String aus
+     `mergeTierConfig(...).moderate` (percent/acBonus/abilityBonus)
+     zusammen, Template interpoliert nur noch `{{../eliteTooltip}}`
+     (`../`, da innerhalb des `{{#each encounterEntries}}`-Blocks, analog
+     zum bestehenden `../bossMode`-Zugriff auf den Elternkontext im
+     selben Loop).
+  `#getEffectiveXp()` selbst bleibt wie zuvor Foundry-abhängig (liest
+  `game.settings.get`), daher nur Syntax-geprüft statt mit Hand-
+  Assertions; `mergeTierConfig()` (bossify-scaling.js, Foundry-
+  unabhängig) separat per Node-Snippet gegen Default- und
+  Override-Werte bestätigt (`.moderate.percent`/`.acBonus`/
+  `.abilityBonus` liefern die erwartete Form). Handlebars-Balance-Check
+  auf dem Template weiterhin grün (83/83 `{{#if}}`, 30/30 `{{#each}}`,
+  2/2 `{{#unless}}`). Noch NICHT live gegen die laufende Foundry-Welt
+  getestet (kein Live-Testing in dieser Runde angefordert) — insbesondere
+  offen: der neue Tooltip-Text nach einer tatsächlichen Anpassung des
+  Moderate-Tiers in den Scaling-Settings, und ob ein Elite+Lair-Eintrag
+  beim tatsächlichen Rendern die erwartete multiplizierte Zahl zeigt.

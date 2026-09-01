@@ -9,7 +9,7 @@ import { getAvailableCategories } from "./item-categories.js";
 import { rollIndividualTreasureForEncounter } from "./individual-treasure-tables.js";
 import { humanizeToken, formatCR } from "./format.js";
 import { bossifyActor, revertBossify, minionifyActor, revertMinionify, scaleEncounterHp } from "./monster-scaling.js";
-import { BOSSIFY_TIERS } from "./bossify-scaling.js";
+import { BOSSIFY_TIERS, mergeTierConfig } from "./bossify-scaling.js";
 import { BossifyDialog } from "./bossify-dialog.js";
 import { ItemCustomizeDialog } from "./item-customize-dialog.js";
 import { resolveMinionXpMultiplier } from "./minion-scaling.js";
@@ -216,28 +216,43 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
    * configured percentage of its normal XP (minionXpMultiplier setting,
    * default 10% — see minion-scaling.js's resolveMinionXpMultiplier();
    * MCDM's table has no XP value at all, this is a Hausregel reflecting how
-   * much weaker a single minion is), overriding the lair adjustment below
-   * since a minion-ified monster's lair-action XP bump wouldn't make sense
-   * at its now-trivial combat weight.
+   * much weaker a single minion is), overriding everything else below
+   * since a minion-ified monster's lair-action/Elite XP bump wouldn't make
+   * sense at its now-trivial combat weight (Minion is mutually exclusive
+   * with Elite on the same entry anyway — see #onToggleMinionify — so this
+   * only actually short-circuits the lair adjustment in practice).
    *
-   * Otherwise: the monster's normal XP, or the CR+1 value if the GM has
-   * marked it as fighting in its own lair (only meaningful for monsters
-   * that actually have lair actions per hasLairActions). Matches the
-   * 2024/2025 Monster Manual's own fix for a 2014-MM oversight, where
-   * lair-fighting monsters didn't get any XP bump at all — verified
-   * against the dnd5e system source (system.resources.lair.value/.inside),
-   * which computes the same CR+1 adjustment internally on a fully-loaded
-   * Actor.
+   * Otherwise, starting from the monster's normal XP: the CR+1 value if the
+   * GM has marked it as fighting in its own lair (only meaningful for
+   * monsters that actually have lair actions per hasLairActions — matches
+   * the 2024/2025 Monster Manual's own fix for a 2014-MM oversight, where
+   * lair-fighting monsters didn't get any XP bump at all, verified against
+   * the dnd5e system source's system.resources.lair.value/.inside, which
+   * computes the same CR+1 adjustment internally on a fully-loaded Actor);
+   * then, if the entry is also marked Elite, that value is scaled by the
+   * GM's configured Moderate Boss-ify tier percentage (bossifyTierConfig
+   * setting, default 130% — the exact same multiplier Elite uses to scale
+   * the actual actor's HP/damage at Create Combat, see #onToggleElite/
+   * monster-scaling.js, so the budget line and the actor's real combat
+   * weight always agree). Lair and Elite stack multiplicatively rather
+   * than one overriding the other, unlike Minion above: a lair-fighting
+   * Elite monster is genuinely tougher than either bump alone, whereas a
+   * minion-ified monster's lair bonus is nonsensical once it's down to
+   * 1 HP-or-dead combat weight.
    */
   #getEffectiveXp(entry) {
     if (entry.minionify) {
       const multiplier = resolveMinionXpMultiplier(game.settings.get("encounter-builder-2024", "minionXpMultiplier"));
       return Math.round((entry.monster.xp ?? 0) * multiplier);
     }
-    if (entry.inLair && entry.monster.hasLairActions && entry.monster.cr != null) {
-      return xpForChallengeRating(entry.monster.cr + 1) ?? entry.monster.xp ?? 0;
+    const lairXp = (entry.inLair && entry.monster.hasLairActions && entry.monster.cr != null)
+      ? (xpForChallengeRating(entry.monster.cr + 1) ?? entry.monster.xp ?? 0)
+      : (entry.monster.xp ?? 0);
+    if (entry.isElite) {
+      const tierConfig = mergeTierConfig(game.settings.get("encounter-builder-2024", "bossifyTierConfig"));
+      return Math.round(lairXp * (tierConfig.moderate.percent / 100));
     }
-    return entry.monster.xp ?? 0;
+    return lairXp;
   }
 
   /** Item search/rarity/category filter state is kept separate per tab (hoardSearchTerm/hoardRarityFilter/hoardCategoryFilter vs individualSearchTerm/individualRarityFilter/individualCategoryFilter) so typing/filtering in one tab doesn't leak into the other's — this reads whichever trio belongs to the currently active tab. */
@@ -392,6 +407,14 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     );
     const spend = evaluateSpend(budget, selectedXp);
 
+    // Elite always scales at the Moderate Boss-ify tier (see #onToggleElite/
+    // #getEffectiveXp) — built here instead of hard-coding the shipped
+    // defaults in the template, so the Elite button's tooltip stays correct
+    // after a GM edits the Moderate row in Settings → "Boss-ify / Minion-ify
+    // Values".
+    const eliteTier = mergeTierConfig(game.settings.get("encounter-builder-2024", "bossifyTierConfig")).moderate;
+    const eliteTooltip = `Scale this monster up at the fixed Moderate Boss-ify tier (${eliteTier.percent}% HP/damage, +${eliteTier.acBonus} AC, +${eliteTier.abilityBonus} to ability scores) — no per-monster tuning, any number of entries can be Elite at once`;
+
     const creatureTypes = getAvailableCreatureTypes(this.#getMonstersExcluding("type"));
     const availableCrs = [...new Set(this.#getMonstersExcluding("cr").map((m) => m.cr))]
       .sort((a, b) => a - b)
@@ -486,6 +509,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         this.roleConstraints.reduce((sum, c) => sum + c.count, 0) >
         (this.bossMode ? Math.max(0, this.desiredCount - 1) : this.desiredCount),
       bossMode: this.bossMode,
+      eliteTooltip,
       autoFillWarning: this.autoFillWarning,
       compendiums: this.compendiums,
       groupedCompendiums: groupPacksBySource(this.compendiums).map((g) => ({
@@ -1173,7 +1197,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   static async #onAutoFill(event, target) {
     const budget = computeBudget(this.partyLevel, this.partySize, this.difficulty);
     const currentEntries = [...this.encounter.values()];
-    const alreadySpent = currentEntries.reduce((sum, e) => sum + (e.monster.xp ?? 0) * e.count, 0);
+    const alreadySpent = currentEntries.reduce((sum, e) => sum + this.#getEffectiveXp(e) * e.count, 0);
     const alreadyCount = currentEntries.reduce((sum, e) => sum + e.count, 0);
     const remainingSlots = this.desiredCount - alreadyCount;
 
