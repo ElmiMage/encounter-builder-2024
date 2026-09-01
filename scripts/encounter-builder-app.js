@@ -8,8 +8,8 @@ import { createLootActor, suggestLootPlan, suggestSmoothedLootPlan, rerollMagicI
 import { getAvailableCategories } from "./item-categories.js";
 import { rollIndividualTreasureForEncounter } from "./individual-treasure-tables.js";
 import { humanizeToken, formatCR } from "./format.js";
-import { bossifyActor, revertBossify, minionifyActor, revertMinionify, scaleEncounterHp } from "./monster-scaling.js";
-import { BOSSIFY_TIERS, mergeTierConfig } from "./bossify-scaling.js";
+import { bossifyActor, revertBossify, minionifyActor, revertMinionify, scaleEncounterHp, findVariantActor } from "./monster-scaling.js";
+import { BOSSIFY_TIERS, mergeTierConfig, resolveEntryVariant } from "./bossify-scaling.js";
 import { BossifyDialog } from "./bossify-dialog.js";
 import { ItemCustomizeDialog } from "./item-customize-dialog.js";
 import { resolveMinionXpMultiplier } from "./minion-scaling.js";
@@ -522,24 +522,25 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       encounterEntries: [...this.encounter.values()].map((e) => {
         // Find the world Actor already spawned from this compendium monster
         // (if Create Combat has been run before) so the template can show a
-        // Revert button once it carries the matching snapshot flag. Scoped
-        // to the entry's current isBoss/isElite/minionify status — the
-        // reuse-lookup in #onCreateCombat already refuses to hand a stray
-        // boss-ified or minion-ified Actor to an entry that isn't currently
-        // configured that way (always creates a fresh one instead), so an
-        // entry that isn't currently marked never needs reverting. Elite
-        // shares the same bossifySnapshot flag as Boss (it's the same
-        // scaling engine at a fixed tier), so it's grouped with isBoss here.
-        const worldActor =
-          e.isBoss || e.isElite || e.minionify
-            ? game.actors.find((a) => a.getFlag("encounter-builder-2024", "sourceUuid") === e.monster.uuid)
-            : null;
+        // Revert button once it carries the matching snapshot flag.
+        // findVariantActor() (fed by resolveEntryVariant(), the exact same
+        // resolution #onCreateCombat's own reuse lookup uses — see
+        // bossify-scaling.js/monster-scaling.js) matches on tier and the
+        // apply* flags too, not just sourceUuid — otherwise, with more than
+        // one existing variant of the same source monster (e.g. a
+        // Moderate-Elite Actor AND a separately-scaled High-Boss Actor of
+        // the same creature), this could offer a Revert button for the
+        // wrong one. Returns undefined (no Revert button) for a plain entry,
+        // since findVariantActor() only matches Boss/Elite/Minion variants.
+        const worldActor = findVariantActor(e.monster.uuid, resolveEntryVariant(e));
         return {
           ...e,
           effectiveXp: this.#getEffectiveXp(e),
-          bossifiedActorId:
-            (e.isBoss || e.isElite) && worldActor?.getFlag("encounter-builder-2024", "bossifySnapshot") ? worldActor.id : null,
-          minionifiedActorId: e.minionify && worldActor?.getFlag("encounter-builder-2024", "minionifySnapshot") ? worldActor.id : null,
+          // worldActor is already exactly the matching variant (or
+          // undefined) from findVariantActor() above — no need to
+          // re-check its snapshot flag here too.
+          bossifiedActorId: (e.isBoss || e.isElite) ? (worldActor?.id ?? null) : null,
+          minionifiedActorId: e.minionify ? (worldActor?.id ?? null) : null,
           // Whatever roles this monster is currently tagged with (empty if
           // roles were never computed for it, e.g. it was added manually
           // and Auto-Fill/Compute Roles never ran against its filters) —
@@ -1537,24 +1538,14 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     };
 
     for (let i = 0; i < spawnList.length; i++) {
-      const { monster, isBoss, bossifyTier, isElite, minionify, applyAC, applyHP, applyAbilities, applyDamageDice } =
-        spawnList[i];
-      // Elite reuses the exact same scaling engine as Boss-ify, fixed at
-      // the "moderate" tier (see #onToggleElite) — effectiveTier/
-      // effectiveApply* below let the rest of this loop treat Boss and
-      // Elite identically without duplicating the Actor-creation/reuse
-      // logic. The apply* flags default to true here (matching
-      // bossifyActor's own defaults) because Elite entries never go
-      // through the Boss-ify Dialog that normally sets them — leaving
-      // them `undefined` would make the reuse-lookup below never match a
-      // previously-created Elite Actor (undefined !== the stored `true`).
-      const shouldBossify = isElite || (isBoss && bossifyTier !== null);
-      const effectiveTier = isElite ? "moderate" : bossifyTier;
-      const effectiveApplyAC = applyAC ?? true;
-      const effectiveApplyHP = applyHP ?? true;
-      const effectiveApplyAbilities = applyAbilities ?? true;
-      const effectiveApplyDamageDice = applyDamageDice ?? true;
-      const shouldMinionify = minionify;
+      const { monster } = spawnList[i];
+      // resolveEntryVariant() (bossify-scaling.js) resolves Elite down to
+      // Boss-ify's "moderate" tier and fills in the apply* defaults — the
+      // exact same resolution _prepareContext()'s Revert-button lookup
+      // uses (via findVariantActor(), see monster-scaling.js), so the two
+      // can never disagree about which Actor a given entry means.
+      const { shouldBossify, tier: effectiveTier, applyAC: effectiveApplyAC, applyHP: effectiveApplyHP, applyAbilities: effectiveApplyAbilities, applyDamageDice: effectiveApplyDamageDice, shouldMinionify } =
+        resolveEntryVariant(spawnList[i]);
       const variantKey = variantKeyFor(
         monster,
         shouldBossify,
@@ -1574,24 +1565,19 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       // Combat run could silently reuse that old, already-scaled Actor for
       // what's now supposed to be a plain, unscaled copy of the same
       // monster. Boss/Minion entries instead match the exact variant via
-      // variantKey, first against this run's own cache, then against any
-      // matching Actor left over from an earlier Create Combat run.
+      // findVariantActor() (monster-scaling.js), first against this run's
+      // own cache, then against any matching Actor left over from an
+      // earlier Create Combat run.
       let worldActor = variantKey
         ? scaledActorReuse.get(variantKey) ??
-          game.actors.find((a) => {
-            if (a.getFlag("encounter-builder-2024", "sourceUuid") !== monster.uuid) return false;
-            if (a.prototypeToken.actorLink) return false;
-            if (shouldBossify) {
-              const snap = a.getFlag("encounter-builder-2024", "bossifySnapshot");
-              return (
-                snap?.tier === effectiveTier &&
-                snap?.applyAC === effectiveApplyAC &&
-                snap?.applyHP === effectiveApplyHP &&
-                snap?.applyAbilities === effectiveApplyAbilities &&
-                snap?.applyDamageDice === effectiveApplyDamageDice
-              );
-            }
-            return Boolean(a.getFlag("encounter-builder-2024", "minionifySnapshot"));
+          findVariantActor(monster.uuid, {
+            shouldBossify,
+            tier: effectiveTier,
+            applyAC: effectiveApplyAC,
+            applyHP: effectiveApplyHP,
+            applyAbilities: effectiveApplyAbilities,
+            applyDamageDice: effectiveApplyDamageDice,
+            shouldMinionify,
           })
         : game.actors.find(
             (a) =>

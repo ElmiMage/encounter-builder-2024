@@ -255,20 +255,29 @@ export function autoFillEncounterWithRoles(
 
   const accumulator = new Map();
   const unmatchedRoles = [];
+  // A constraint with no matching candidate in the current pool no longer
+  // just loses its slots — they fall through to the unconstrained bucket
+  // below instead, so the GM still gets `desiredCount` creatures overall
+  // (just without the requested role for those particular slots).
+  // unmatchedRoles still records which roles this happened to, so the
+  // warning below stays honest about it.
+  let unfulfillableSlots = 0;
 
   for (const constraint of activeConstraints) {
     const rolePool = pool.filter((m) => (roleData.get(m.uuid) ?? []).includes(constraint.role));
     if (rolePool.length === 0) {
       unmatchedRoles.push(constraint.role);
+      unfulfillableSlots += constraint.count;
       continue;
     }
     const groupBudget = (budget * constraint.count) / desiredCount;
     mergeCounts(accumulator, fillSlots(rolePool, groupBudget, constraint.count, rng));
   }
 
-  if (unconstrainedSlots > 0) {
-    const groupBudget = (budget * unconstrainedSlots) / desiredCount;
-    mergeCounts(accumulator, fillSlots(pool, groupBudget, unconstrainedSlots, rng));
+  const totalUnconstrainedSlots = unconstrainedSlots + unfulfillableSlots;
+  if (totalUnconstrainedSlots > 0) {
+    const groupBudget = (budget * totalUnconstrainedSlots) / desiredCount;
+    mergeCounts(accumulator, fillSlots(pool, groupBudget, totalUnconstrainedSlots, rng));
   }
 
   const entries = [...accumulator.values()];
@@ -279,7 +288,7 @@ export function autoFillEncounterWithRoles(
     warning = `Role constraints requested ${requestedTotal} creature(s), more than the Desired Count of ${desiredCount} — later constraints were trimmed to fit.`;
   }
   if (unmatchedRoles.length > 0) {
-    const unmatchedMsg = `No monsters matching the current filters are tagged as: ${unmatchedRoles.join(", ")}. Those role slots were skipped — try Compute Roles with fewer other filters active, or a broader search.`;
+    const unmatchedMsg = `No monsters matching the current filters are tagged as: ${unmatchedRoles.join(", ")}. Those role slots were filled without the requested role instead — try Compute Roles with fewer other filters active, or a broader search.`;
     warning = warning ? `${warning} ${unmatchedMsg}` : unmatchedMsg;
   } else if (!warning && totalSpent > budget * 1.15) {
     warning = `Best available fit for ${desiredCount} creature(s) overshoots the budget by more than 15% — consider allowing more creatures or loosening the filters.`;

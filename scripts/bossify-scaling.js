@@ -34,6 +34,40 @@ export const BOSSIFY_TIERS = {
 export const BOSSIFY_TIER_ORDER = ["raw", "moderate", "high", "deadly"];
 
 /**
+ * Resolves an encounter entry's actual Boss-ify/Elite/Minion-ify variant
+ * config — the exact inputs that determine which world Actor a Create
+ * Combat run would reuse (or a Revert button should point at) for this
+ * entry. Pure resolution of already-set entry fields, no Foundry API
+ * involved; shared by encounter-builder-app.js's Create Combat reuse
+ * lookup and its Revert-button lookup (see findVariantActor() in
+ * monster-scaling.js) so the two can never disagree about "which Actor
+ * does this entry currently mean" for the same entry — previously two
+ * separately-written computations that had drifted apart (the Revert
+ * lookup didn't account for tier/apply* at all).
+ *
+ * Elite reuses the exact same scaling engine as Boss-ify pinned to the
+ * "moderate" tier (see #onToggleElite in encounter-builder-app.js).
+ * apply* flags default to true because Elite entries — and Boss entries
+ * whose Boss-ify Dialog was never opened to configure them — never pass
+ * through the dialog that would otherwise set them explicitly; leaving
+ * them `undefined` would make findVariantActor() never match a
+ * previously-created Actor, since `undefined !== true`.
+ *
+ * @param {{isBoss?:boolean, bossifyTier?:string|null, isElite?:boolean, minionify?:boolean, applyAC?:boolean, applyHP?:boolean, applyAbilities?:boolean, applyDamageDice?:boolean}} entry
+ */
+export function resolveEntryVariant(entry) {
+  return {
+    shouldBossify: Boolean(entry.isElite) || (Boolean(entry.isBoss) && entry.bossifyTier !== null),
+    tier: entry.isElite ? "moderate" : entry.bossifyTier ?? null,
+    applyAC: entry.applyAC ?? true,
+    applyHP: entry.applyHP ?? true,
+    applyAbilities: entry.applyAbilities ?? true,
+    applyDamageDice: entry.applyDamageDice ?? true,
+    shouldMinionify: Boolean(entry.minionify),
+  };
+}
+
+/**
  * Layers a GM-saved override object (from the `bossifyTierConfig` setting —
  * possibly `{}`, possibly missing fields on a given tier, e.g. from a
  * partially-filled-in form) on top of the built-in BOSSIFY_TIERS defaults.

@@ -206,6 +206,44 @@ function buildMinionItemUpdates(actor, flatDamage) {
 }
 
 /**
+ * Finds the single world Actor (if any) matching one exact Boss/Elite/
+ * Minion variant of a compendium monster — i.e. the Actor that
+ * encounter-builder-app.js's Create Combat would reuse for an entry
+ * configured this way instead of creating a new one, and therefore also
+ * the Actor its Revert button should point at. Single source of truth for
+ * "which Actor belongs to this entry," shared between the Create Combat
+ * reuse lookup and the encounter list's Revert-button lookup — previously
+ * duplicated as two different (and subtly out-of-sync) queries.
+ *
+ * Only ever matches an unlinked Actor (actorLink === false): a linked
+ * Actor shares one HP pool with its token, so this module never
+ * reuses/shares those. Boss and Elite share this same bossifySnapshot-tier
+ * matching (Elite is just Boss-ify pinned to the "moderate" tier — see
+ * #onToggleElite in encounter-builder-app.js); pass `shouldBossify: true`
+ * for both. Returns undefined if the entry is neither Boss/Elite nor
+ * Minion (nothing to match — plain entries use a different, simpler
+ * lookup of their own in encounter-builder-app.js).
+ */
+export function findVariantActor(monsterUuid, { shouldBossify, tier, applyAC, applyHP, applyAbilities, applyDamageDice, shouldMinionify }) {
+  if (!shouldBossify && !shouldMinionify) return undefined;
+  return game.actors.find((a) => {
+    if (a.getFlag(MODULE_ID, "sourceUuid") !== monsterUuid) return false;
+    if (a.prototypeToken.actorLink) return false;
+    if (shouldBossify) {
+      const snap = a.getFlag(MODULE_ID, "bossifySnapshot");
+      return (
+        snap?.tier === tier &&
+        snap?.applyAC === applyAC &&
+        snap?.applyHP === applyHP &&
+        snap?.applyAbilities === applyAbilities &&
+        snap?.applyDamageDice === applyDamageDice
+      );
+    }
+    return Boolean(a.getFlag(MODULE_ID, "minionifySnapshot"));
+  });
+}
+
+/**
  * Scales `actor` at the given Boss-ify tier ("raw"/"moderate"/"high"/
  * "deadly" — see BOSSIFY_TIERS in bossify-scaling.js): HP and damage dice
  * scale by the tier's percentage, AC and ability scores get the tier's flat

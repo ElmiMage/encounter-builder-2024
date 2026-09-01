@@ -1315,3 +1315,69 @@
   offen: der neue Tooltip-Text nach einer tatsächlichen Anpassung des
   Moderate-Tiers in den Scaling-Settings, und ob ein Elite+Lair-Eintrag
   beim tatsächlichen Rendern die erwartete multiplizierte Zahl zeigt.
+  Nachtrag: alle vier Punkte live gegen die Testwelt verifiziert (Ancient
+  Bronze Dragon, CR 22/41000 XP/hasLairActions) — Elite allein 53300 XP
+  (41000×1.3), Elite+Lair kombiniert 65000 XP (CR23-Äquivalent 50000×1.3,
+  bestätigt die multiplikative Verknüpfung statt Override); Auto-Fill
+  Remaining mit einem bereits vorhandenen Elite-Eintrag (Goblin, effektiv
+  65 statt roh 50 XP) füllte korrekt die restlichen Slots ohne Fehler;
+  Moderate-Tier testweise live auf 150%/+3 AC/+4 Ability umgestellt →
+  sowohl `eliteTooltip` als auch die Elite-XP-Neuberechnung (Goblin
+  50→75) zogen sofort nach, ohne Neuladen — belegt, dass beide Stellen
+  tatsächlich das Live-Setting lesen. Setting danach zurückgesetzt,
+  Encounter geleert, keine Actors/Tokens/Combats erzeugt (Test blieb rein
+  im App-State).
+- Bugfix: Revert-Button matchte falschen World-Actor bei mehreren
+  Varianten + nicht erfüllbare Rollen-Constraints ließen Slots leer
+  (seit 2026-09, auf Nutzerwunsch/Bugreport): zwei unabhängige Fixes.
+  1. **Revert-Button-Matching**: `_prepareContext()`s Berechnung von
+     `bossifiedActorId`/`minionifiedActorId` (encounter-builder-app.js)
+     suchte bisher nur per `sourceUuid` nach IRGENDEINEM World-Actor
+     desselben Quellmonsters — bei mehreren existierenden Varianten
+     derselben Kreatur (z.B. ein Elite/Moderate-Actor UND ein separater
+     High-Boss-Actor) konnte der Revert-Button so den falschen Actor
+     anbieten, während `#onCreateCombat`s eigener Reuse-Lookup bereits
+     korrekt nach Tier + allen vier Apply-Flags matchte. Die beiden
+     Stellen waren zwei unabhängig geschriebene Antworten auf dieselbe
+     Frage ("welcher Actor gehört zu diesem Eintrag") und liefen
+     auseinander. Behoben durch Extraktion in **zwei wiederverwendbare,
+     importierte** (nicht duplizierte) Funktionen: `resolveEntryVariant
+     (entry)` (bossify-scaling.js, pure Logik — löst Elite auf den
+     "moderate"-Tier auf, füllt Apply-Flag-Defaults) und `findVariantActor
+     (monsterUuid, variant)` (monster-scaling.js, Foundry-abhängig —
+     durchsucht `game.actors` nach dem exakt passenden Tier+Apply-Flags-
+     bzw. Minion-Snapshot). `_prepareContext()` und `#onCreateCombat`
+     rufen jetzt beide `findVariantActor(monster.uuid,
+     resolveEntryVariant(entry))` auf — ein dritter zukünftiger
+     Verwendungsort kann dadurch nicht erneut auseinanderlaufen, er muss
+     einfach dieselben zwei Funktionen importieren. 6 Hand-Assertions für
+     `resolveEntryVariant()` (u.a. Boss ohne konfigurierten Tier zählt
+     NICHT als bossifiziert, Elite überschreibt einen evtl. stale
+     `isBoss`+`bossifyTier`) — alle grün. Der neue gemeinsame Pfad lief
+     bereits unbeanstandet durch den Elite+Lair/Auto-Fill-Live-Test weiter
+     oben in diesem Dokument (jeder `_prepareContext()`-Aufruf durchläuft
+     ihn), das war aber kein Test des eigentlichen Bugs — DAS gezielte
+     Mehrfach-Varianten-Szenario (zwei verschieden konfigurierte World-
+     Actors derselben Kreatur gleichzeitig, Revert-Button zeigt auf den
+     jeweils richtigen) wurde in dieser Runde NICHT live durchgespielt,
+     nur per Hand-Assertions auf der reinen Auflösungslogik abgesichert.
+  2. **Nicht erfüllbare Rollen-Constraints**: `autoFillEncounterWithRoles()`
+     (auto-fill.js) ließ eine Rollen-Constraint ohne passenden Kandidaten
+     im aktuell gefilterten Pool (`rolePool.length === 0`) bisher komplett
+     leer — die Kreaturenzahl fiel unter `desiredCount`, nur die Warnung
+     blieb. Jetzt wandert der Slot-Count einer solchen Constraint in den
+     `unconstrainedSlots`-Topf und wird ganz normal aus dem allgemeinen
+     Pool nachgefüllt (`unfulfillableSlots`-Akkumulator, addiert auf
+     `unconstrainedSlots` VOR dem finalen Fill-Aufruf) — der GM bekommt
+     weiterhin exakt `desiredCount` Kreaturen, nur ohne die gewünschte
+     Rolle für diese Slots. Warnungstext angepasst ("skipped" →
+     "were filled without the requested role instead"), damit er die neue
+     Semantik korrekt beschreibt statt fälschlich weiterhin "übersprungen"
+     zu behaupten. Gilt automatisch auch für den Adds-Teil von
+     `autoFillBossEncounterWithRoles()`, da diese Funktion intern
+     `autoFillEncounterWithRoles()` für die Adds aufruft — keine separate
+     Änderung dort nötig. 8 Hand-Assertions (deterministisches `rng`,
+     u.a. teilweise unmatched + teilweise matched Constraints, komplett
+     unmatched, komplett matched als Regressionscheck, sowie derselbe Fall
+     einmal durch den Boss-Mode-Adds-Pfad) — alle grün, kein Live-Test in
+     dieser Runde angefordert (reine Logik, kein Foundry-Bezug).
