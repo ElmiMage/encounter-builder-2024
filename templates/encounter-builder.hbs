@@ -179,6 +179,7 @@
           {{/if}}
         </button>
       </div>
+      <p class="role-heuristic-hint">Roles are a relative homebrew heuristic: <strong>Compute Roles</strong> compares the monsters currently matching the other filters within each CR. Run it again after changing that pool to tag newly included monsters.</p>
       <ul class="monster-list">
         {{#each monsters}}
           <li class="monster-entry" draggable="true" data-action="viewMonster" data-uuid="{{this.uuid}}" title="Click to view stat block, or drag onto the canvas to place a token">
