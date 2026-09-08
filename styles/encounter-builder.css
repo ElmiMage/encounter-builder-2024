@@ -305,6 +305,13 @@
    constraint chips (visually ties "this monster is tagged X" to "Auto-Fill
    can reserve slots for X"), but plain/muted since these aren't
    interactive and sit in an already-dense list row. */
+.encounter-builder-2024 .role-heuristic-hint {
+  margin: 0;
+  font-size: 0.8em;
+  opacity: 0.8;
+  line-height: 1.35;
+}
+
 .encounter-builder-2024 .role-badge {
   display: inline-block;
   background: rgba(255, 255, 255, 0.08);
