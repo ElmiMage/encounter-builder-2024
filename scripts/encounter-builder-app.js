@@ -79,6 +79,9 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   monsterIndex = [];
   /** @type {Map<string, {monster:object, count:number}>} keyed by uuid */
   encounter = new Map();
+  /** Tracks imported Assistant contributions per handoff so alternative variants replace only the prior imported counts. */
+  appliedAssistantHandoffs = new Map();
+  assistantHandoff = null;
 
   /** How every monster's HP in the encounter is determined at Create Combat time: "raw" (printed stat block, no change), "minroll", or "maxroll". Independent of Boss-ify — see scaleEncounterHp() in monster-scaling.js. */
   encounterHpMode = "raw";
@@ -374,6 +377,64 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     }
   }
 
+  async importAssistantPlan(plan) {
+    if (plan?.schema !== "gm-assistant/encounter-plan" || typeof plan.handoffId !== "string" || plan.handoffId.length > 200 || !/^[A-Z0-9-]{1,80}$/.test(plan.roomCode ?? "") || typeof plan.roomName !== "string" || plan.roomName.length > 120 || !/^JournalEntry\.[A-Za-z0-9_-]+\.JournalEntryPage\.[A-Za-z0-9_-]+$/.test(plan.sourceUuid ?? "") || !Array.isArray(plan.monsters) || plan.monsters.length < 1 || plan.monsters.length > 30) {
+      throw new Error("Invalid GM Assistant encounter plan.");
+    }
+    const pending = new Map();
+    for (const spec of plan.monsters) {
+      if (!/^Actor\.[A-Za-z0-9_-]+$/.test(spec?.uuid ?? "") || !Number.isInteger(spec.count) || spec.count < 1 || spec.count > 100) {
+        throw new Error("The GM Assistant encounter plan contains an invalid Actor or count.");
+      }
+      const actor = await loadFullActor(spec.uuid);
+      const cr = Number(actor?.system?.details?.cr);
+      if (!actor || actor.type !== "npc" || !Number.isFinite(cr)) {
+        throw new Error("Could not load a D&D NPC with a valid CR from " + spec.uuid + ". No encounter entries were added.");
+      }
+      const previous = pending.get(spec.uuid);
+      if (previous) { previous.count += spec.count; continue; }
+      const type = actor.system?.details?.type;
+      pending.set(spec.uuid, {
+        monster: {
+          uuid: actor.uuid, id: actor.id, name: actor.name, img: actor.img, cr,
+          xp: xpForChallengeRating(cr) ?? 0,
+          creatureType: type?.value || "unknown", subtype: type?.subtype || null,
+          size: actor.system?.traits?.size || null, habitats: [],
+          hasLairActions: Boolean(actor.system?.resources?.lair?.value),
+          sourcePack: actor.pack || "world",
+          sourceLabel: actor.pack ? (game.packs.get(actor.pack)?.metadata.label ?? actor.pack) : "World Actor",
+        },
+        count: spec.count,
+      });
+    }
+    const signature = JSON.stringify([...pending.entries()].map(([uuid, entry]) => [uuid, entry.count]).sort(([a], [b]) => a.localeCompare(b)));
+    const previous = this.appliedAssistantHandoffs.get(plan.handoffId);
+    const previousStillPresent = previous && [...previous.counts].every(([uuid, count]) => (this.encounter.get(uuid)?.count ?? 0) >= count);
+    if (previous?.signature === signature && previousStillPresent) return { opened: true, duplicate: true };
+
+    // A handoff ID identifies the source room. If the GM changes a conditional
+    // variant, remove only the previous plan's contribution, preserving other
+    // creatures already in the Builder. Resolve every new Actor before mutation.
+    if (previous) {
+      for (const [uuid, count] of previous.counts) {
+        const current = this.encounter.get(uuid);
+        if (!current) continue;
+        const remaining = current.count - count;
+        if (remaining > 0) current.count = remaining;
+        else this.encounter.delete(uuid);
+      }
+    }
+    for (const [uuid, entry] of pending) {
+      const current = this.encounter.get(uuid);
+      if (current) current.count += entry.count;
+      else this.encounter.set(uuid, { ...entry, inLair: false });
+    }
+    this.appliedAssistantHandoffs.set(plan.handoffId, { signature, counts: new Map([...pending].map(([uuid, entry]) => [uuid, entry.count])) });
+    this.activeTab = "encounter";
+    this.assistantHandoff = { roomCode: plan.roomCode, roomName: plan.roomName, sourceUuid: plan.sourceUuid, monsterCount: [...pending.values()].reduce((sum, entry) => sum + entry.count, 0) };
+    return { opened: true, imported: pending.size };
+  }
+
   async _prepareContext() {
     if (!this.#partyAutoSynced) {
       this.#partyAutoSynced = true;
@@ -437,6 +498,7 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       sizeOptions: Array.from({ length: 10 }, (_, i) => i + 1),
       desiredCountOptions: Array.from({ length: 10 }, (_, i) => i + 1),
       activeTab: this.activeTab,
+      assistantHandoff: this.assistantHandoff,
       lootCompendiums: this.lootCompendiums,
       groupedLootCompendiums: groupPacksBySource(this.lootCompendiums).map((g) => ({
         ...g,
@@ -1283,6 +1345,8 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
     if (!confirmed) return;
 
     this.encounter = new Map();
+    this.appliedAssistantHandoffs.clear();
+    this.assistantHandoff = null;
     this.autoFillWarning = null;
     this.render();
   }
@@ -1405,6 +1469,8 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       });
     }
     this.encounter = newEncounter;
+    this.appliedAssistantHandoffs.clear();
+    this.assistantHandoff = null;
     // So the per-entry Boss checkbox/"Boss-ify…" button is actually visible
     // for a boss carried in from the preset, instead of silently applying
     // at Create Combat with no on-screen indication (bossMode only gates
@@ -1452,6 +1518,8 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   /** Also reset automatically when the window is closed, so reopening starts clean even if the user forgot to click Reset. */
   async _onClose(options) {
     this.encounter = new Map();
+    this.appliedAssistantHandoffs.clear();
+    this.assistantHandoff = null;
     this.autoFillWarning = null;
     // Re-sync from the Party actor next time the app opens, in case
     // characters leveled up or the party roster changed while it was closed.

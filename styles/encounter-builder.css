@@ -860,3 +860,5 @@
   gap: 0.5rem;
   margin-top: 0.5rem;
 }
+
+.assistant-handoff-note { background: #edf4fa; color: #243746; border-left: 3px solid #356985; padding: 8px 10px; margin: 8px 0; font-size: 0.9em; }

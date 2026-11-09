@@ -208,3 +208,7 @@ fixed `custom.formula` damage rolled correctly through Midi's own
 This module is free and will stay free. If it saved you some prep time and
 you feel like buying me a coffee, that's always appreciated — but never
 expected: [ko-fi.com/elmimage](https://ko-fi.com/elmimage)
+
+### GM Assistant encounter handoff API
+
+The optional public API accepts the versioned `gm-assistant/encounter-plan` object from the Foundry GM Assistant. It preselects verified world NPCs and counts additively; it does not clear the current encounter or deploy Tokens/Combat. Unsupported or unresolved entries are rejected before any list changes.

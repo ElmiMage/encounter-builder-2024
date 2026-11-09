@@ -53,6 +53,10 @@
 
   {{#if (eq activeTab "encounter")}}
 
+  {{#if assistantHandoff}}
+    <p class="assistant-handoff-note">GM Assistant plan: {{assistantHandoff.roomCode}} – {{assistantHandoff.roomName}} · {{assistantHandoff.monsterCount}} creatures preselected. Existing tokens are unchanged; deployment is separate.</p>
+  {{/if}}
+
   <details class="compendium-tree" data-tree="encounter" {{#if compendiumTreeOpen}}open{{/if}}>
     <summary>Compendiums ({{compendiums.length}} packs)</summary>
     {{#each groupedCompendiums}}

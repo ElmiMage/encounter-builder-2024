@@ -7,9 +7,11 @@ import { loadFullActor } from "./compendium-browser.js";
 
 let appInstance = null;
 
-function openEncounterBuilder() {
+async function openEncounterBuilder(plan = null) {
   if (!appInstance) appInstance = new EncounterBuilderApp();
+  const imported = plan ? await appInstance.importAssistantPlan(plan) : { opened: true };
   appInstance.render(true);
+  return imported;
 }
 
 Hooks.once("init", () => {
