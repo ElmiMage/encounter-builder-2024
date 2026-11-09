@@ -1,6 +1,6 @@
 # GM Assistant handoff
 
-Status: development branch `develop/gm-assistant-handoff`, based on Encounter Builder 0.4.3. The handoff is unreleased. Module manifest remains 0.4.3 until a release is deliberately prepared.
+Status: development branch `develop/gm-assistant-handoff`, based on Encounter Builder 0.4.3. The integrated development snapshot is marked 0.4.6 in the module manifest, but remains unreleased (no tag or GitHub release exists for this branch).
 
 ## Public contract
 
