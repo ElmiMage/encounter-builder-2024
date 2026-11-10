@@ -211,6 +211,16 @@
   opacity: 0.75;
 }
 
+.encounter-builder-2024 .tactical-role-badges {
+  flex: 0 1 150px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78em;
+  opacity: 0.85;
+}
+
 .encounter-builder-2024 .auto-fill-controls {
   display: flex;
   align-items: flex-end;

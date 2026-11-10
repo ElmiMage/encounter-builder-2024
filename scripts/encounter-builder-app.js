@@ -15,6 +15,7 @@ import { ItemCustomizeDialog } from "./item-customize-dialog.js";
 import { resolveMinionXpMultiplier } from "./minion-scaling.js";
 import { computeMonsterRoles } from "./monster-role-data.js";
 import { ROLE_LABELS } from "./monster-roles.js";
+import { classifyTacticalRoles, getTacticalRoleDisplay, getTacticalRoleLoadPlan, TACTICAL_ROLE_LABELS, TACTICAL_ROLES } from "./tactical-roles.js";
 import { HandoffLedger, findMonsterForManualAdd, resolveHandoffPlan } from "./assistant-handoff.mjs";
 
 const { HandlebarsApplicationMixin, ApplicationV2 } = foundry.applications.api;
@@ -35,6 +36,9 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
       toggleCompendium: EncounterBuilderApp.#onToggleCompendium,
       toggleCompendiumGroup: EncounterBuilderApp.#onToggleCompendiumGroup,
       computeRoles: EncounterBuilderApp.#onComputeRoles,
+      computeTacticalRoles: EncounterBuilderApp.#onComputeTacticalRoles,
+      refreshTacticalRoles: EncounterBuilderApp.#onRefreshTacticalRoles,
+      editTacticalRoles: EncounterBuilderApp.#onEditTacticalRoles,
       addRoleConstraint: EncounterBuilderApp.#onAddRoleConstraint,
       removeRoleConstraint: EncounterBuilderApp.#onRemoveRoleConstraint,
       addMonster: EncounterBuilderApp.#onAddMonster,
@@ -124,6 +128,10 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   roleFilter = "any";
   /** @type {Map<string, string[]>} monster uuid -> role tags, filled in by #onComputeRoles */
   roleData = new Map();
+  /** @type {Map<string, object>} UUID -> evidence-based tactical evaluation */
+  tacticalRoleData = new Map();
+  tacticalRolesComputing = false;
+  tacticalRoleProgress = null;
   rolesComputing = false;
   /** @type {{done:number, total:number}|null} */
   roleComputeProgress = null;
@@ -309,15 +317,25 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
   #buildMonsterListHtml(monsters) {
     return monsters
       .map(
-        (m) => `
+        (m) => {
+          const evaluation = this.tacticalRoleData.get(m.uuid);
+          const override = game.settings.get("encounter-builder-2024", "tacticalRoleOverrides")?.[m.uuid];
+          const display = getTacticalRoleDisplay(evaluation, override);
+          const roles = display.roles.filter((role) => role.status !== "Unklar");
+          const stale = display.stale;
+          const autoEvidence = evaluation ? Object.entries(evaluation.roles).map(([role, data]) => `${TACTICAL_ROLE_LABELS[role]}: ${data.status} — ${data.reason}`).join("; ") : "Automatic evidence not computed";
+          return `
         <li class="monster-entry" draggable="true" data-action="viewMonster" data-uuid="${this.#escapeHtml(m.uuid)}" title="Click to view stat block, or drag onto the canvas to place a token">
           <img src="${this.#escapeHtml(m.img)}" width="24" height="24" />
           <span class="monster-name" title="${this.#escapeHtml(m.name)}">${this.#escapeHtml(m.name)}</span>
           <span class="monster-cr">CR ${this.#escapeHtml(m.cr)}</span>
           <span class="monster-xp">${m.xp ? this.#escapeHtml(m.xp) : "?"} XP</span>
           <span class="monster-source">${this.#escapeHtml(m.sourceLabel)}</span>
+          ${roles.length ? `<span class="tactical-role-badges" title="Automatic evidence: ${this.#escapeHtml(autoEvidence)}">${this.#escapeHtml(roles.map((role) => role.label).join(", "))}${override ? " · manual" : ""}${stale ? " · possibly outdated" : ""}</span>` : ""}
+          ${(evaluation || override) ? `<button type="button" class="square-btn" data-action="editTacticalRoles" data-uuid="${this.#escapeHtml(m.uuid)}" title="Edit or reset world-wide tactical role correction">Edit Roles</button>` : ""}
           <button type="button" class="add-item-btn square-btn" data-action="addMonster" data-uuid="${this.#escapeHtml(m.uuid)}" title="Add to encounter">+</button>
         </li>`
+        }
       )
       .join("");
   }
@@ -545,7 +563,17 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
         isOpen: this.openGroups.has(g.groupKey),
       })),
       compendiumTreeOpen: this.compendiumTreeOpen,
-      monsters: filtered,
+      monsters: filtered.map((monster) => {
+        const evaluation = this.tacticalRoleData.get(monster.uuid);
+        const override = game.settings.get("encounter-builder-2024", "tacticalRoleOverrides")?.[monster.uuid];
+        const display = getTacticalRoleDisplay(evaluation, override);
+        const stale = display.stale;
+        const shownRoles = display.roles.filter((role) => role.status !== "Unklar");
+        const automaticEvidence = evaluation ? Object.entries(evaluation.roles).map(([role, data]) => `${TACTICAL_ROLE_LABELS[role]}: ${data.status} — ${data.reason}`).join("; ") : "Automatic evidence not computed";
+        return { ...monster, tacticalRoles: shownRoles, tacticalRoleSummary: shownRoles.filter((r) => r.status !== "Unklar").map((r) => r.label).join(", "), tacticalRoleTitle: `Automatic evidence: ${automaticEvidence}`, tacticalRoleStale: stale, canEditTacticalRoles: Boolean(evaluation || override) };
+      }),
+      tacticalRolesComputing: this.tacticalRolesComputing,
+      tacticalRoleProgress: this.tacticalRoleProgress,
       encounterHpMode: this.encounterHpMode,
       encounterEntries: [...this.encounter.values()].map((e) => {
         // Find the world Actor already spawned from this compendium monster
@@ -1021,6 +1049,69 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
   static async #onComputeRoles(event, target) {
     await EncounterBuilderApp.#ensureRolesComputed.call(this, this.#getMonstersExcluding("role"));
+  }
+
+  static async #onComputeTacticalRoles() {
+    await EncounterBuilderApp.#runTacticalRoles.call(this, false);
+  }
+
+  static async #onRefreshTacticalRoles() {
+    await EncounterBuilderApp.#runTacticalRoles.call(this, true);
+  }
+
+  static async #runTacticalRoles(forceRefresh) {
+    const scope = this.#getFilteredMonsters();
+    const toLoad = getTacticalRoleLoadPlan(scope, this.tacticalRoleData, forceRefresh);
+    this.tacticalRolesComputing = true;
+    this.tacticalRoleProgress = { done: 0, total: toLoad.length };
+    this.render();
+    let done = 0;
+    for (const monster of toLoad) {
+      try {
+        const actor = await loadFullActor(monster.uuid);
+        if (actor) this.tacticalRoleData.set(monster.uuid, classifyTacticalRoles(actor));
+      } catch (err) {
+        console.warn(`Encounter Builder | tactical role data failed for "${monster.name}"`, err);
+      }
+      done++;
+      this.tacticalRoleProgress.done = done;
+      if (done % 10 === 0 || done === toLoad.length) this.render();
+    }
+    this.tacticalRolesComputing = false;
+    this.tacticalRoleProgress = null;
+    this.render();
+  }
+
+  static async #onEditTacticalRoles(event, target) {
+    if (!game.user?.isGM) {
+      ui.notifications.warn("Only a GM can edit world-wide tactical role corrections.");
+      return;
+    }
+    const uuid = target.dataset.uuid;
+    const monster = this.monsterIndex.find((entry) => entry.uuid === uuid) ?? [...this.encounter.values()].find((entry) => entry.monster.uuid === uuid)?.monster;
+    const evaluation = this.tacticalRoleData.get(uuid);
+    if (!monster || !evaluation) return;
+    const overrides = game.settings.get("encounter-builder-2024", "tacticalRoleOverrides") ?? {};
+    const current = Array.isArray(overrides[uuid]?.roles)
+      ? overrides[uuid].roles.filter((role) => TACTICAL_ROLES.includes(role))
+      : Object.entries(evaluation.roles).filter(([, value]) => value.status !== "Unklar").map(([role]) => role);
+    const result = await foundry.applications.api.DialogV2.input({
+      window: { title: `Tactical Roles — ${monster.name}` },
+      content: `<p>Enter role names separated by commas. Leave empty to clear the manual override and use automatic evidence again.</p><p>Allowed: ${TACTICAL_ROLES.map((role) => TACTICAL_ROLE_LABELS[role]).join(", ")}</p><div class="form-group"><label>Roles</label><input type="text" name="roles" value="${this.#escapeHtml(current.join(", "))}" /></div>`,
+      ok: { label: "Save" },
+    });
+    if (result === undefined) return;
+    const text = String(result.roles ?? "").trim();
+    const roles = text ? [...new Set(text.split(",").map((role) => role.trim().toLowerCase()).map((role) => TACTICAL_ROLES.find((key) => TACTICAL_ROLE_LABELS[key].toLowerCase() === role || key === role)).filter(Boolean))] : [];
+    if (text && !roles.length) {
+      ui.notifications.warn("No recognized tactical roles were entered; allowed roles are listed in the dialog.");
+      return;
+    }
+    const next = { ...overrides };
+    if (!text) delete next[uuid];
+    else next[uuid] = { roles, signature: evaluation.signature };
+    await game.settings.set("encounter-builder-2024", "tacticalRoleOverrides", next);
+    this.render();
   }
 
   /**

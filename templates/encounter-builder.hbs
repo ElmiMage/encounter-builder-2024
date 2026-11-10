@@ -184,6 +184,13 @@
         </button>
       </div>
       <p class="role-heuristic-hint">Roles are a relative homebrew heuristic: <strong>Compute Roles</strong> compares the monsters currently matching the other filters within each CR. Run it again after changing that pool to tag newly included monsters.</p>
+      <div class="monster-filter-row monster-filter-row-secondary">
+        <button type="button" data-action="computeTacticalRoles" {{#if tacticalRolesComputing}}disabled{{/if}} title="Inspect structured dnd5e Actor, Item and Activity data for evidence-based tactical roles. Does not affect legacy filters or Auto-Fill.">
+          {{#if tacticalRolesComputing}}Inspecting tactical roles… ({{tacticalRoleProgress.done}}/{{tacticalRoleProgress.total}}){{else}}Inspect Tactical Roles{{/if}}
+        </button>
+        <button type="button" data-action="refreshTacticalRoles" {{#if tacticalRolesComputing}}disabled{{/if}} title="Reload current Actor data to check whether manual role corrections became outdated.">Refresh Tactical Roles</button>
+      </div>
+      <p class="role-heuristic-hint">Tactical roles use structured capabilities and show Belegt, Wahrscheinlich or Unklar. They do not affect XP or Auto-Fill. Manual corrections are shared by all GMs in this world.</p>
       <ul class="monster-list">
         {{#each monsters}}
           <li class="monster-entry" draggable="true" data-action="viewMonster" data-uuid="{{this.uuid}}" title="Click to view stat block, or drag onto the canvas to place a token">
@@ -192,6 +199,8 @@
             <span class="monster-cr">CR {{this.cr}}</span>
             <span class="monster-xp">{{#if this.xp}}{{this.xp}}{{else}}?{{/if}} XP</span>
             <span class="monster-source">{{this.sourceLabel}}</span>
+            {{#if this.tacticalRoleSummary}}<span class="tactical-role-badges" title="{{this.tacticalRoleTitle}}">{{this.tacticalRoleSummary}}{{#if this.tacticalRoleStale}} · possibly outdated{{/if}}</span>{{/if}}
+            {{#if this.canEditTacticalRoles}}<button type="button" class="square-btn" data-action="editTacticalRoles" data-uuid="{{this.uuid}}" title="Edit or reset world-wide tactical role correction">Edit Roles</button>{{/if}}
             <button type="button" class="add-item-btn square-btn" data-action="addMonster" data-uuid="{{this.uuid}}" title="Add to encounter">+</button>
           </li>
         {{/each}}

@@ -52,6 +52,12 @@ Hooks.once("init", () => {
     default: [],
   });
 
+  // World-shared manual tactical role corrections, keyed by stable Foundry UUID.
+  // These are module data only; Actors and source compendiums are never edited.
+  game.settings.register("encounter-builder-2024", "tacticalRoleOverrides", {
+    scope: "world", config: false, type: Object, default: {},
+  });
+
   // User-facing preferences, shown under Configure Settings > Module
   // Settings. Client-scoped like the compendium selection above — these
   // are personal tool preferences for whichever GM opens the app, not a

@@ -10,6 +10,14 @@ node --test tests/assistant-handoff.test.mjs
 
 Die Tests prüfen Mengenbuchhaltung und atomare Planvalidierung ohne Foundry. Sie erzeugen keine Foundry-Dokumente.
 
+## Taktische Rollenerkennung
+
+```powershell
+node --test tests/tactical-roles.test.mjs tests/assistant-handoff.test.mjs
+```
+
+Die taktischen Klassifikationstests verwenden minimierte dnd5e-Datenobjekte und laufen ohne Foundry. Sie sind kein Live-Kompatibilitätsnachweis. AP04b-Live-Prüfungen und Testgrenzen stehen nach tatsächlicher Ausführung im [AP04b-Bericht](AP04B_TACTICAL_ROLE_DETECTION.md).
+
 ## Foundry-Liveprüfung
 
 Für Integrationstests eine ausdrücklich getrennte Welt verwenden. AP03 verwendet:
