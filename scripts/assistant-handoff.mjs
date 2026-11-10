@@ -56,6 +56,13 @@ export class HandoffLedger {
   }
 }
 
+/** Find an entry's monster for a manual increment, including handoff-imported
+ * world Actors that are not part of the compendium index. */
+export function findMonsterForManualAdd(monsterIndex, existing, uuid) {
+  return monsterIndex.find((monster) => monster.uuid === uuid)
+    ?? (existing?.monster?.uuid === uuid ? existing.monster : undefined);
+}
+
 /** Validate and resolve every plan actor before returning data safe to apply. */
 export async function resolveHandoffPlan(plan, resolveActor, xpForCr, getPackLabel = (pack) => pack) {
   if (plan?.schema !== "gm-assistant/encounter-plan" || typeof plan.handoffId !== "string" || plan.handoffId.length > 200 || !/^[A-Z0-9-]{1,80}$/.test(plan.roomCode ?? "") || typeof plan.roomName !== "string" || plan.roomName.length > 120 || !/^JournalEntry\.[A-Za-z0-9_-]+\.JournalEntryPage\.[A-Za-z0-9_-]+$/.test(plan.sourceUuid ?? "") || !Array.isArray(plan.monsters) || plan.monsters.length < 1 || plan.monsters.length > 30) {

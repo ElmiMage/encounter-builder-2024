@@ -15,7 +15,7 @@ import { ItemCustomizeDialog } from "./item-customize-dialog.js";
 import { resolveMinionXpMultiplier } from "./minion-scaling.js";
 import { computeMonsterRoles } from "./monster-role-data.js";
 import { ROLE_LABELS } from "./monster-roles.js";
-import { HandoffLedger, resolveHandoffPlan } from "./assistant-handoff.mjs";
+import { HandoffLedger, findMonsterForManualAdd, resolveHandoffPlan } from "./assistant-handoff.mjs";
 
 const { HandlebarsApplicationMixin, ApplicationV2 } = foundry.applications.api;
 
@@ -1072,10 +1072,10 @@ export class EncounterBuilderApp extends HandlebarsApplicationMixin(ApplicationV
 
   static #onAddMonster(event, target) {
     const uuid = target.dataset.uuid;
-    const monster = this.monsterIndex.find((m) => m.uuid === uuid);
+    const existing = this.encounter.get(uuid);
+    const monster = findMonsterForManualAdd(this.monsterIndex, existing, uuid);
     if (!monster) return;
     this.#captureScroll(".encounter-list");
-    const existing = this.encounter.get(uuid);
     const count = this.handoffLedger.adjustManual(uuid, 1, existing?.count ?? 0);
     if (existing) existing.count = count;
     else this.encounter.set(uuid, { monster, count, inLair: false });

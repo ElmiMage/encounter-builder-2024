@@ -46,3 +46,26 @@ Die Abnahme wurde in der laufenden Foundry-Browser-Sitzung fortgesetzt. Die Port
 Zusätzlicher Sichtbefund in der aktuellen Sitzung: Builder-Oberfläche mit einer bestehenden Zeile `2x AP03 Goblin` und `100 / 1500 XP`; ein Actor-Detailfenster lag darüber. Das belegt keine Variante, Ledger-Buchhaltung oder Laufzeitversion. Makro-Klicks trafen die überlagerte UI nicht zuverlässig; es wurden daher keine weiteren Ergebnisse daraus abgeleitet. Browser-Konsole lieferte bei der begrenzten Fehlerabfrage keine Warnungen oder Fehler.
 
 Die AP03-Unit-Suite bleibt mit 10/10 bestanden (reine Node-Tests, kein Foundry-Live-Nachweis für L05–L18). Es wurde in AP03b kein reproduzierter Produktfehler gefunden, weil die nötigen Live-Szenarien nicht ausgeführt werden konnten; es gab folglich keine Codekorrektur. AP03 kann mit dieser AP03b-Runde nicht vollständig live abgenommen werden. Vor einem Abschluss müssen die fehlenden Szenarien in der sichtbaren Testwelt erneut ausgeführt werden, beginnend mit einer eindeutig bestätigten World-ID und Laufzeitversion.
+
+## AP03c Live-Abnahme (10.11.2026)
+
+Die Lücken aus AP03b wurden am 10.11.2026 in der Foundry-Browseroberfläche der isolierten Welt `Encounter Builder – AP03 Test` (`encounter-builder-test`) geprüft: Foundry V14.369, dnd5e 6.0.6. GM Assistant und Guild Quest waren deaktiviert; der Encounter Builder war aktiv. Die AP03-Baseline L01–L04 bleibt separat belegt (siehe oben).
+
+| Tests | Ergebnis | Live-Beobachtung |
+|---|---|---|
+| L05 | Bestanden, einschließlich Fix | Welt-Actor-Zeile per sichtbarem Plus erhöht (2→3; weitere UI-Klicks ebenfalls gezählt). Vor dem Fix reproduziert: Plus blieb bei 2, weil `#onAddMonster` nur den Compendium-Index abfragte. Jetzt wird der vorhandene Encounter-Actor als Rückfall verwendet. |
+| L06–L08 | Bestanden | Wechsel Alpha 4→Beta 2 entfernte den alten Beitrag; Minus reduzierte nur den noch zugeordneten Handoff-Anteil; Plus erzeugte manuelle Menge, die beim Variantenwechsel erhalten blieb. |
+| L09–L10 | Bestanden | Zwei Handoff-IDs blieben getrennt; Variantenwechsel und identischer Retry änderten nur den passenden Beitrag bzw. blieben dedupliziert. Abschließende Mengen wurden nach dem UI-Render geprüft. |
+| L11–L13 | Bestanden | Reset leerte Liste, XP und Banner; derselbe Plan importierte danach erneut. Laden eines Kompendium-Presets setzte das Ledger zurück; nach App-Schließen wurde beim erneuten Öffnen eine frische Sitzung angelegt. |
+| L14–L15 | Bestanden (Fehlerpfade) | Ungültiger Plan sowie Mischung aus gültigem und nicht auflösbarem Actor wurden abgewiesen; vorhandene Encounter-Zeilen blieben jeweils unverändert. |
+| L16 | Bestanden | Bei Alpha 3 plus manueller Erhöhung auf 4 fügte der Handoff Beta 1 hinzu; beim Variantenwechsel blieb Alpha 4 als vorhandene/manuelle Menge erhalten und Beta 1 wurde sichtbar. |
+| L17–L18 | Bestanden | Öffentliche API funktionierte bei aktivem Builder ohne GM Assistant. Vorher/nachher: 0 Combats und 0 Tokens; Planimport deployt oder startet keinen Kampf. |
+| Zusatzregression | Bestanden | Kompendium-Goblin hinzugefügt (XP 250→300) und entfernt (300→250). Auto-Fill erzeugte vier Kreaturen bei 1.100/1.500 XP. Compute Roles für CR 1 und Rollenfilter Brute reduzierten die sichtbare Liste von 52 auf 13. Encounter am Ende per UI zurückgesetzt: 0/1.500 XP, keine Encounter-Zeilen. |
+
+### Teststeuerung und Befund
+
+AP03b scheiterte an überlappenden Foundry-Fenstern: unscoped Makro-/Button-Klicks konnten ein verdecktes Fenster statt des sichtbaren Ziels treffen. Das war ein Steuerungsfehler im Testablauf, kein nachgewiesener Produktfehler. AP03c verwendete das jeweils sichtbare Vordergrundfenster, prüfte Makroinhalt nach dem Speichern erneut und begrenzte Builder-Aktionen auf das Builder-Fenster. Alle Foundry-Aktionen liefen über den Browser.
+
+Der reproduzierte Plus-Button-Fehler wurde in `scripts/encounter-builder-app.js` behoben. `findMonsterForManualAdd` in `scripts/assistant-handoff.mjs` bevorzugt den Compendium-Treffer und verwendet sonst einen passenden bereits vorhandenen Encounter-Actor. Der Regressionstest liegt in `tests/assistant-handoff.test.mjs`; die Unit-Suite und Modul-Syntaxprüfungen bestanden. Das ist ein gezielter Laufzeitbefund, kein vollständiger dnd5e-/Foundry-Kompatibilitätstest.
+
+Zusätzliche Testdaten (AP03c Goblin Alpha/Beta, Makro und gespeicherte Presets) liegen ausschließlich in der isolierten Testwelt. Welt-Actor-Einträge sind nicht Teil des Compendium-Monsterindex; ein Preset mit solchem Actor wurde beim Laden mit sichtbarer Warnung übersprungen. Der Preset-Test für Ledger-Reset wurde deshalb zusätzlich mit einem Kompendium-Monster erfolgreich ausgeführt. Keine Tokens oder Combats wurden erzeugt. Die temporär installierte App-Datei wurde nach dem Test auf SHA-256 `90C041667A078A4CD513677C5C80351491F69D6F13FD1FEE11682DA0D2046D50` zurückgesetzt; die temporäre Helper-Datei wurde entfernt.

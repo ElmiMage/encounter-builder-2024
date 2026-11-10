@@ -1,11 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { HandoffLedger, resolveHandoffPlan } from "../scripts/assistant-handoff.mjs";
+import { findMonsterForManualAdd, HandoffLedger, resolveHandoffPlan } from "../scripts/assistant-handoff.mjs";
 
 const actor = (id, type = "npc", cr = 1) => ({ uuid: `Actor.${id}`, id, name: id, img: "actor.webp", type, system: { details: { cr, type: { value: "humanoid" } }, traits: { size: "med" }, resources: {} } });
 const plan = (handoffId, monsters) => ({ schema: "gm-assistant/encounter-plan", handoffId, roomCode: "A1", roomName: "Test Room", sourceUuid: "JournalEntry.journal.JournalEntryPage.page", monsters });
 const resolved = (id, count) => new Map([[`Actor.${id}`, { monster: { uuid: `Actor.${id}`, name: id }, count }]]);
 const apply = (ledger, id, signature, counts) => ledger.replace(id, signature, new Map(counts));
+
+test("manual increment can reuse a handoff-imported world Actor outside the compendium index", () => {
+  const monster = { uuid: "Actor.worldGoblin", name: "World Goblin" };
+  const existing = { monster, count: 2 };
+  assert.equal(findMonsterForManualAdd([], existing, monster.uuid), monster);
+  assert.equal(findMonsterForManualAdd([], existing, "Actor.other"), undefined);
+  const indexed = { uuid: monster.uuid, name: "Indexed Goblin" };
+  assert.equal(findMonsterForManualAdd([indexed], existing, monster.uuid), indexed);
+});
 
 test("valid first import and identical retry are deduplicated", () => {
   const ledger = new HandoffLedger();
