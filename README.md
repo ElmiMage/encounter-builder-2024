@@ -1,5 +1,7 @@
 # Encounter Builder (2024 Rules)
 
+Contributor test instructions: [`docs/TESTING.md`](docs/TESTING.md).
+
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/elmimage)
 
 Foundry VTT module for D&D 5e (2024 rules): builds encounters against the
