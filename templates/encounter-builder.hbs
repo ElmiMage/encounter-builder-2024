@@ -190,7 +190,7 @@
         </button>
         <button type="button" data-action="refreshTacticalRoles" {{#if tacticalRolesComputing}}disabled{{/if}} title="Reload current Actor data to check whether manual role corrections became outdated.">Refresh Tactical Roles</button>
       </div>
-      <p class="role-heuristic-hint">Tactical roles use structured capabilities and show Belegt, Wahrscheinlich or Unklar. They do not affect XP or Auto-Fill. Manual corrections are shared by all GMs in this world.</p>
+      <p class="role-heuristic-hint">Tactical roles inspect the full enabled monster pool; Brute compares HP and melee damage within CR bands. Badges separate evidence confidence (Belegt / Wahrscheinlich) from tactical significance (Main / Secondary). Possible means evidence is insufficient. They do not affect XP or Auto-Fill. Manual corrections are shared by all GMs in this world.</p>
       <ul class="monster-list">
         {{#each monsters}}
           <li class="monster-entry" draggable="true" data-action="viewMonster" data-uuid="{{this.uuid}}" title="Click to view stat block, or drag onto the canvas to place a token">

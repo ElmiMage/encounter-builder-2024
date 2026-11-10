@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifyTacticalRoles, extractTacticalCapabilities, getTacticalRoleDisplay, getTacticalRoleLoadPlan } from "../scripts/tactical-roles.js";
+import { classifyTacticalRoles, classifyTacticalRolePool, extractTacticalCapabilities, getTacticalRoleDisplay, getTacticalRoleLoadPlan } from "../scripts/tactical-roles.js";
 
 const activity = (type, extra = {}) => ({ type, name: type, ...extra });
 const attack = (name, range, formula) => activity("attack", { name, attack: { type: range === 5 ? "melee" : "ranged" }, range: range == null ? {} : { value: range, long: range >= 30 ? range * 4 : undefined, units: "ft" }, labels: { damage: [{ formula }] } });
@@ -50,7 +50,7 @@ test("spell-like multi-function Actor can be artillery, controller, and support"
   const result = classifyTacticalRoles(mage);
   assert.equal(result.roles.artillery.status, "Belegt");
   assert.equal(result.roles.controller.status, "Belegt");
-  assert.equal(result.roles.support.status, "Belegt");
+  assert.equal(result.roles.support.status, "Unklar");
   assert.equal(result.mainRole, null);
   assert.ok(result.roles.controller.evidence[0].source.includes("Hold Person"));
 });
@@ -78,8 +78,8 @@ test("alternatives are not summed and activity collections accept arrays, object
 
 test("area effects require a structured template and facts retain source paths", () => {
   const withTemplate = classifyTacticalRoles(actor([item("Breath", [activity("save", { target: { template: { type: "line", size: 60 } }, damage: { parts: [{ formula: "12d8" }] } })])]));
-  assert.equal(withTemplate.roles.controller.status, "Wahrscheinlich");
-  assert.ok(withTemplate.roles.controller.evidence[0].source.includes("target.template"));
+  assert.equal(withTemplate.roles.controller.status, "Unklar");
+  assert.equal(withTemplate.capabilities.flags.hasStructuredArea, true);
   const withoutTemplate = classifyTacticalRoles(actor([item("Blast", [activity("save", { damage: { parts: [{ formula: "8d6" }] } })])]));
   assert.equal(withoutTemplate.roles.controller.status, "Unklar");
 });
@@ -99,7 +99,7 @@ test("manual selection can replace several automatic roles while preserving the 
   const evaluation = classifyTacticalRoles(actor([item("Heal", [activity("heal")]), item("Bolt", [attack("Ranged", 60, "2d8")])]));
   const shown = getTacticalRoleDisplay(evaluation, { roles: ["support", "artillery"], signature: evaluation.signature });
   assert.deepEqual(shown.roles.filter((role) => role.status === "Manuell").map((role) => role.label).sort(), ["Artillery", "Support"]);
-  assert.equal(evaluation.roles.support.status, "Belegt");
+  assert.equal(evaluation.roles.support.status, "Unklar");
   assert.equal(evaluation.roles.artillery.status, "Belegt");
 });
 
@@ -108,4 +108,75 @@ test("role results are reused from cache until explicit refresh", () => {
   const cache = new Map([["Actor.one", {}]]);
   assert.deepEqual(getTacticalRoleLoadPlan(pool, cache).map((entry) => entry.uuid), ["Compendium.pack.Actor.two"]);
   assert.deepEqual(getTacticalRoleLoadPlan(pool, cache, true).map((entry) => entry.uuid), pool.map((entry) => entry.uuid));
+});
+
+test("invalid CR actors never share a brute comparison cohort", () => {
+  const unknownCr = (uuid, hp, damage) => {
+    const value = actor([item("Claw", [attack("Melee", 5, `${damage}d8`)], { type: { value: "natural" } })]);
+    value.uuid = uuid;
+    value.system.attributes.hp.max = hp;
+    value.system.details = { cr: null };
+    return value;
+  };
+  const results = classifyTacticalRolePool([
+    unknownCr("Actor.a", 500, 20), unknownCr("Actor.b", 800, 25),
+  ]);
+  assert.equal(results.get("Actor.a").comparison.cohortSize, 0);
+  assert.equal(results.get("Actor.b").comparison.cohortSize, 0);
+  assert.equal(results.get("Actor.a").roles.brute.status, "Unklar");
+});
+
+test("Foundry 6 object attack types and natural weapons use Item range/type evidence", () => {
+  const gargoyle = actor([item("Claw", [activity("attack", { attack: { type: { value: "melee" } }, range: { value: 5, units: "ft" }, damage: { parts: [{ formula: "2d4 + 2" }] } })], { type: { value: "natural" }, range: { value: 5, long: null } })]);
+  assert.equal(extractTacticalCapabilities(gargoyle).flags.hasMelee, true);
+  const archer = actor([item("Crossbow", [activity("attack", { attack: { type: { value: "ranged" } }, range: { value: 5, units: "ft" }, damage: { parts: [{ formula: "1d8 + 3" }] } })], { type: { value: "simpleR" }, range: { value: 80, long: 320 } })]);
+  const ranged = extractTacticalCapabilities(archer);
+  assert.equal(ranged.flags.hasRanged, true);
+  assert.equal(ranged.rangedRange, 320);
+});
+
+test("pure damage area, self healing, and self buff do not imply Controller or Support", () => {
+  const monster = actor([
+    item("Blast", [activity("save", { target: { template: { type: "sphere" } }, damage: { parts: [{ formula: "8d6" }] } })]),
+    item("Self Heal", [activity("heal", { target: { affects: { type: "self" } } })]),
+    item("Self Ward", [activity("utility", { target: { affects: { type: "self" } }, effects: { e: { description: "resistance" } } })]),
+  ]);
+  const result = classifyTacticalRoles(monster);
+  assert.equal(result.roles.controller.status, "Unklar");
+  assert.equal(result.roles.support.status, "Unklar");
+});
+
+test("ally-targeted structured healing supports; explicit Cunning Action supports Skirmisher", () => {
+  const monster = actor([
+    item("Healing Word", [activity("heal", { target: { affects: { type: "ally" } } })]),
+    item("Cunning Action", [], { description: { value: "The creature uses Cunning Action to take the Dash, Disengage, or Hide action." } }),
+    item("Dagger", [activity("attack", { attack: { type: { value: "melee" } }, damage: { parts: [{ formula: "1d4 + 2" }] } })], { type: { value: "simpleM" } }),
+  ]);
+  const result = classifyTacticalRoles(monster);
+  assert.equal(result.roles.support.status, "Belegt");
+  assert.equal(result.roles.skirmisher.status, "Wahrscheinlich");
+});
+
+test("a limited ranged burst is not a repeatable artillery option", () => {
+  const monster = actor([item("Recharge Blast", [activity("attack", { attack: { type: { value: "ranged" } }, range: { value: 60, units: "ft" }, uses: { max: 1, recovery: [{ period: "recharge" }] }, damage: { parts: [{ formula: "8d8" }] } })])]);
+  const result = classifyTacticalRoles(monster);
+  assert.equal(result.roles.artillery.status, "Wahrscheinlich");
+  assert.equal(result.capabilities.flags.hasRepeatableRanged, false);
+  assert.equal(result.significance.artillery, "Secondary");
+});
+
+test("CR cohort Brute requires at least 20 peers and both HP and melee damage above P75", () => {
+  const make = (index, hp, damage) => ({
+    uuid: `Actor.${index}`, system: { details: { cr: 4 }, attributes: { hp: { max: hp }, ac: { value: 12 } } },
+    items: [item("Bite", [activity("attack", { attack: { type: { value: "melee" } }, damage: { parts: [{ formula: `${damage}d6` }] } })], { type: { value: "natural" } })],
+  });
+  const small = classifyTacticalRolePool([make(1, 200, 10), make(2, 50, 1)]);
+  assert.equal(small.get("Actor.1").roles.brute.status, "Unklar");
+  const peers = Array.from({ length: 20 }, (_, index) => make(index, 50 + index, 1 + Math.floor(index / 3)));
+  peers.push(make("elite", 200, 12));
+  const pool = classifyTacticalRolePool(peers);
+  assert.equal(pool.get("Actor.elite").roles.brute.status, "Wahrscheinlich");
+  assert.equal(pool.get("Actor.elite").comparison.cohortSize, 21);
+  assert.equal(pool.get("Actor.elite").significance.brute, "Main");
+  assert.equal(pool.get("Actor.0").roles.brute.status, "Unklar");
 });
